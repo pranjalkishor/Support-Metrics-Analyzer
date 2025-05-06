@@ -1,0 +1,41 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Dark mode styles */
+body.dark-mode {
+  background-color: #121212;
+  color: #e1e1e1 !important;
+}
+
+.dark-mode h1, .dark-mode h2, .dark-mode h3, .dark-mode h4, .dark-mode p, 
+.dark-mode label, .dark-mode div {
+  color: #e1e1e1 !important;
+}
+
+.dark-mode select, .dark-mode input {
+  background-color: #2a2a40 !important;
+  color: #e1e1e1 !important;
+  border-color: #444 !important;
+}
+
+.dark-mode option {
+  background-color: #2a2a40;
+  color: #e1e1e1;
+}
+
+/* For chart container and other boxes */
+.dark-mode .card-container {
+  background-color: #1e1e30 !important;
+  border-color: #333 !important;
+}
