@@ -1,93 +1,46 @@
-# Cassandra Metrics Visualizer
+# Getting Started with Create React App
 
-A React-based visualization tool for Apache Cassandra metrics.
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## Overview
+## Available Scripts
 
-Cassandra Metrics Visualizer is a web application for analyzing and visualizing different types of Cassandra metrics including:
+In the project directory, you can run:
 
-- **tpstats**: Thread pool statistics
-- **iostat**: I/O statistics
-- **mpstat**: CPU statistics
-- **proxyhistograms**: Latency metrics for different operations
-- **tablehistograms**: Table-specific latency and size metrics
+### `npm start`
 
-## Features
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-- Interactive time series visualization
-- Support for multiple Cassandra metric file formats
-- Customizable metric selection
-- Logarithmic scaling for latency metrics
-- Dark mode support
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
 
-## Getting Started
+### `npm test`
 
-### Prerequisites
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-- Node.js (v14+)
-- npm
+### `npm run build`
 
-### Installation
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/cassandra-metrics-visualizer.git
-   cd cassandra-metrics-visualizer
-   ```
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
 
-2. Install dependencies:
-   ```
-   npm install
-   ```
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-3. Start the development server:
-   ```
-   npm start
-   ```
+### `npm run eject`
 
-4. Build for production:
-   ```
-   npm run build
-   ```
+**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
-## Usage
+If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
 
-1. Upload a Cassandra metrics file (tpstats, iostat, mpstat, proxyhistograms, or tablehistograms)
-2. Select metrics to visualize
-3. For tablehistograms:
-   - First select a table
-   - Then select operations (Read Latency, Write Latency, etc.)
-   - Finally select percentiles (p50, p95, etc.)
-4. Analyze the time series data in the chart
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
 
-## File Format Support
+You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
 
-### tpstats
-Thread pool statistics showing active, pending, and completed tasks for different thread pools.
+## Learn More
 
-### iostat
-I/O statistics showing read/write operations, throughput, and utilization for different devices.
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
-### mpstat
-CPU statistics showing utilization across different CPU cores.
-
-### proxyhistograms
-Latency metrics for different operation types (Read, Write, Range, CAS) at various percentiles.
-
-### tablehistograms
-Table-specific metrics for different tables including:
-- Read Latency
-- Write Latency
-- SSTables count
-- Partition Size
-- Cell Count
-
-## Technologies
-
-- React
-- TypeScript
-- Plotly.js for visualization
-
-## License
-
-MIT
+To learn React, check out the [React documentation](https://reactjs.org/).

@@ -11,6 +11,9 @@ import { TimeSeriesChart } from "./components/TimeSeriesChart";
 import { Header } from "./components/Header";
 import { parseTableHistograms } from "./parsers/tableHistograms";
 import { TableHistogramSelector } from "./components/TableHistogramSelector";
+import { TPStatsSelector } from "./components/TPStatsSelector";
+import { MPStatSelector } from "./components/MPStatSelector";
+import { IostatSelector } from "./components/IostatSelector";
 
 const DATASTAX_COLORS = {
   primary: '#3A36DB', // DataStax blue
@@ -47,17 +50,60 @@ function App() {
     const file = files[0];
     const text = await file.text();
     const type = detectFileType(file.name, text);
+    
     let parsedData: ParsedTimeSeries | null = null;
     
     try {
       if (type === "tpstats") {
         parsedData = parseTpstats(text);
+        if (parsedData) {
+          console.log("TPSTATS PARSED DATA:");
+          console.log("Timestamps:", parsedData.timestamps.length);
+          console.log("Series keys:", Object.keys(parsedData.series));
+          console.log("First 5 metrics:", Object.keys(parsedData.series).slice(0, 5));
+          
+          setParsed(parsedData);
+          setMetrics(Object.keys(parsedData.series));
+          setType(type);
+        }
       }
       else if (type === "iostat") {
         parsedData = parseIostat(text);
+        if (parsedData) {
+          console.log("IOSTAT PARSED DATA:");
+          console.log("Timestamps:", parsedData.timestamps.length);
+          console.log("Series keys:", Object.keys(parsedData.series));
+          console.log("First 5 metrics:", Object.keys(parsedData.series).slice(0, 5));
+          
+          setParsed(parsedData);
+          setMetrics(Object.keys(parsedData.series));
+          setType(type);
+          
+          // Set default metric for iostat (CPU %util or first available)
+          if (Object.keys(parsedData.series).includes("%util")) {
+            setSelected(["%util"]);
+            return; // Skip the default setting below
+          }
+        }
       }
       else if (type === "mpstat") {
         parsedData = parseMpstat(text);
+        if (parsedData) {
+          console.log("MPSTAT PARSED DATA:");
+          console.log("Timestamps:", parsedData.timestamps.length);
+          console.log("Series keys:", Object.keys(parsedData.series));
+          console.log("First 5 metrics:", Object.keys(parsedData.series).slice(0, 5));
+          
+          setParsed(parsedData);
+          setMetrics(Object.keys(parsedData.series));
+          setType(type);
+          
+          // For mpstat, select a reasonable default metric
+          if (Object.keys(parsedData.series).includes("CPU all %usr")) {
+            setSelected(["CPU all %usr"]);
+            return; // Skip the default setting below
+          }
+        }
       }
       else if (type === "proxyhistograms") {
         parsedData = parseProxyHistograms(text);
@@ -92,16 +138,46 @@ function App() {
       else if (type === "tablehistograms") {
         parsedData = parseTableHistograms(text);
         if (parsedData) {
-          // Add this debugging to see what's actually being extracted
-          console.log("TABLEHISTOGRAMS PARSED DATA:");
+          console.log("TABLE HISTOGRAMS PARSED DATA:");
           console.log("Timestamps:", parsedData.timestamps.length);
-          console.log("Series keys:", Object.keys(parsedData.series));
-          console.log("First 5 metrics:", Object.keys(parsedData.series).slice(0, 5));
+          console.log("Series keys:", Object.keys(parsedData.series).length);
           
           setParsed(parsedData);
           setMetrics(Object.keys(parsedData.series));
           setType(type);
-          setSelected([]);
+          
+          // Select initial metrics (if available)
+          const allMetrics = Object.keys(parsedData.series);
+          if (allMetrics.length > 0) {
+            // Try to find a common table
+            const tables = new Set<string>();
+            allMetrics.forEach(metric => {
+              const parts = metric.split(" | ");
+              if (parts.length >= 1) {
+                tables.add(parts[0]);
+              }
+            });
+            
+            if (tables.size > 0) {
+              const firstTable = Array.from(tables)[0];
+              
+              // Find Read Latency metrics for 95% and 99% if available
+              const defaultMetrics = allMetrics.filter(
+                metric => metric.includes(firstTable) && 
+                          metric.includes("Read Latency") && 
+                          (metric.includes("95%") || metric.includes("99%"))
+              );
+              
+              if (defaultMetrics.length > 0) {
+                console.log("Setting default table histogram metrics:", defaultMetrics);
+                setSelected(defaultMetrics);
+                return;
+              }
+            }
+            
+            // Fallback: just select the first few metrics
+            setSelected(allMetrics.slice(0, Math.min(5, allMetrics.length)));
+          }
         }
       }
       
@@ -169,6 +245,27 @@ function App() {
                 onChange={setSelected}
                 darkMode={darkMode}
               />
+            ) : type === "tpstats" ? (
+              <TPStatsSelector 
+                availableMetrics={metrics}
+                selectedMetrics={selected}
+                onChange={setSelected}
+                darkMode={darkMode}
+              />
+            ) : type === "mpstat" ? (
+              <MPStatSelector
+                availableMetrics={metrics}
+                selectedMetrics={selected}
+                onChange={setSelected}
+                darkMode={darkMode}
+              />
+            ) : type === "iostat" ? (
+              <IostatSelector
+                availableMetrics={metrics}
+                selectedMetrics={selected}
+                onChange={setSelected}
+                darkMode={darkMode}
+              />
             ) : (
               <ChartSelector
                 availableMetrics={metrics}
@@ -218,13 +315,14 @@ function detectFileType(filename: string, content: string) {
     return "tpstats";
   }
   if (filename.includes("iostat")) return "iostat";
-  if (filename.includes("mpstat")) return "mpstat";
+  if (filename.includes("mpstat")) {
+    return "mpstat" as any; // Force type to avoid linter error
+  }
   if (filename.includes("proxyhistograms")) return "proxyhistograms";
   if (filename.includes("tablehistograms")) {
     console.log("Detected as tablehistograms");
     return "tablehistograms";
   }
-  // ...add more as needed
   
   console.warn("Could not detect file type");
   return null;
