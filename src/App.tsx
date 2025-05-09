@@ -8,6 +8,7 @@ import { parseTpstats } from "./parsers/tpstats";
 import { FileUpload } from "./components/FileUpload";
 import { ChartSelector } from "./components/ChartSelector";
 import { TimeSeriesChart } from "./components/TimeSeriesChart";
+import { ZoomableTimeSeriesCharts } from "./components/ZoomableTimeSeriesCharts";
 import { Header } from "./components/Header";
 import { parseTableHistograms } from "./parsers/tableHistograms";
 import { TableHistogramSelector } from "./components/TableHistogramSelector";
@@ -23,6 +24,74 @@ const DATASTAX_COLORS = {
   border: '#e0e6ed',
 };
 
+// Ensures parsed timestamps are in proper format for charts
+function preprocessTimestamps(data: ParsedTimeSeries): ParsedTimeSeries {
+  if (!data || !data.timestamps || !data.series) {
+    console.warn("Invalid data structure received");
+    return data;
+  }
+
+  // Log timestamp data for debugging
+  console.log("Preprocessing timestamps:", {
+    timestampCount: data.timestamps.length,
+    firstTimestamp: data.timestamps[0],
+    lastTimestamp: data.timestamps[data.timestamps.length - 1],
+    isArray: Array.isArray(data.timestamps),
+    seriesKeys: Object.keys(data.series).length
+  });
+
+  // Ensure timestamps are in ISO format or convert them
+  const processedTimestamps = data.timestamps.map(timestamp => {
+    // If already a valid date string, return it
+    if (timestamp && typeof timestamp === 'string') {
+      try {
+        // Test if it's a valid date
+        const date = new Date(timestamp);
+        if (!isNaN(date.getTime())) {
+          return timestamp;
+        }
+      } catch (e) {
+        // Not a valid date string, will process below
+      }
+    }
+
+    // For invalid or non-ISO timestamps, try to convert
+    try {
+      // Handle numeric timestamps (milliseconds since epoch)
+      if (typeof timestamp === 'number') {
+        return new Date(timestamp).toISOString();
+      }
+
+      // Handle date objects
+      if (timestamp && typeof timestamp === 'object' && Object.prototype.toString.call(timestamp) === '[object Date]') {
+        return (timestamp as Date).toISOString();
+      }
+
+      // Handle string formats by parsing and converting to ISO
+      if (typeof timestamp === 'string') {
+        // Try to parse using Date constructor
+        const date = new Date(timestamp);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+
+      // If all else fails, create a fallback timestamp
+      return new Date().toISOString();
+    } catch (e) {
+      console.error("Error formatting timestamp:", e, timestamp);
+      // Return a fallback valid date if parsing fails
+      return new Date().toISOString();
+    }
+  });
+
+  // Return a new object with processed timestamps
+  return {
+    ...data,
+    timestamps: processedTimestamps
+  };
+}
+
 function App() {
   const [parsed, setParsed] = useState<ParsedTimeSeries | null>(null);
   const [metrics, setMetrics] = useState<string[]>([]);
@@ -30,6 +99,9 @@ function App() {
   const [type, setType] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true';
+  });
+  const [useZoomableCharts, setUseZoomableCharts] = useState(() => {
+    return localStorage.getItem('useZoomableCharts') !== 'false'; // Default to true
   });
 
   useEffect(() => {
@@ -136,18 +208,72 @@ function App() {
         }
       }
       else if (type === "tablehistograms") {
-        parsedData = parseTableHistograms(text);
-        if (parsedData) {
-          console.log("TABLE HISTOGRAMS PARSED DATA:");
-          console.log("Timestamps:", parsedData.timestamps.length);
-          console.log("Series keys:", Object.keys(parsedData.series).length);
+        const result = parseTableHistograms(text);
+        if (result) {
+          console.log("TABLE HISTOGRAMS PARSED DATA:", {
+            timestamps: result.timestamps.length,
+            seriesKeys: Object.keys(result.series).length,
+            sampleTimestamp: result.timestamps[0],
+            sampleMetrics: Object.keys(result.series).slice(0, 3),
+            sampleValues: Object.keys(result.series).slice(0, 3).map(key => {
+              return {
+                key,
+                values: result.series[key].slice(0, 5),
+                valuesType: typeof result.series[key][0]
+              }
+            })
+          });
           
-          setParsed(parsedData);
-          setMetrics(Object.keys(parsedData.series));
+          // Apply timestamp preprocessing to ensure valid format
+          parsedData = preprocessTimestamps(result);
+          
+          // Create a new copy with converted numbers
+          const processedData = {
+            ...parsedData,
+            series: { ...parsedData.series }
+          };
+          
+          // Ensure tablehistograms data is properly converted to numbers
+          Object.keys(processedData.series).forEach(metric => {
+            // Replace invalid values with previous valid value instead of 0
+            let lastValidValue = 1; // Start with a small positive value
+            
+            processedData.series[metric] = processedData.series[metric].map(value => {
+              let numericValue: number;
+              
+              if (typeof value === 'string') {
+                numericValue = parseFloat(value);
+              } else if (typeof value === 'number') {
+                numericValue = value;
+              } else {
+                numericValue = NaN;
+              }
+              
+              if (isNaN(numericValue) || numericValue === 0) {
+                // Use the last valid value instead of 0 or null
+                return lastValidValue;
+              } else {
+                // Store this valid value for future gaps
+                lastValidValue = numericValue;
+                return numericValue;
+              }
+            });
+            
+            // Print some diagnostic info
+            console.log(`Processed metric ${metric}:`, {
+              originalCount: result.series[metric].length,
+              processedCount: processedData.series[metric].length,
+              sampleBefore: result.series[metric].slice(0, 5),
+              sampleAfter: processedData.series[metric].slice(0, 5)
+            });
+          });
+          
+          setParsed(processedData);
+          setMetrics(Object.keys(processedData.series));
           setType(type);
           
           // Select initial metrics (if available)
-          const allMetrics = Object.keys(parsedData.series);
+          const allMetrics = Object.keys(processedData.series);
           if (allMetrics.length > 0) {
             // Try to find a common table
             const tables = new Set<string>();
@@ -183,6 +309,9 @@ function App() {
       
       // Generic handling for any parsed data
       if (parsedData && Object.keys(parsedData.series).length > 0) {
+        // Always preprocess timestamps to ensure valid format
+        parsedData = preprocessTimestamps(parsedData);
+        
         setParsed(parsedData);
         const newMetrics = Object.keys(parsedData.series);
         setMetrics(newMetrics);
@@ -205,6 +334,12 @@ function App() {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     localStorage.setItem('darkMode', String(newDarkMode));
+  };
+
+  const toggleChartType = () => {
+    const newUseZoomableCharts = !useZoomableCharts;
+    setUseZoomableCharts(newUseZoomableCharts);
+    localStorage.setItem('useZoomableCharts', String(newUseZoomableCharts));
   };
 
   return (
@@ -234,6 +369,24 @@ function App() {
             Upload Metric File
           </h2>
           <FileUpload onFiles={handleFiles} />
+          
+          <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center' }}>
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              cursor: 'pointer',
+              marginRight: '10px',
+              color: darkMode ? "#e1e1e1" : "inherit"
+            }}>
+              <input 
+                type="checkbox" 
+                checked={useZoomableCharts} 
+                onChange={toggleChartType} 
+                style={{ marginRight: '6px' }}
+              />
+              Enable zoomable synchronized charts
+            </label>
+          </div>
         </div>
         
         {parsed && (
@@ -281,14 +434,25 @@ function App() {
               padding: '24px',
               marginTop: '24px'
             }}>
-              <TimeSeriesChart 
-                data={parsed} 
-                selectedMetrics={selected}
-                darkMode={darkMode}
-                isLogarithmic={type === "proxyhistograms" || 
-                               (type === "tablehistograms" && 
-                                selected.some(m => m.includes("Latency")))}
-              />
+              {useZoomableCharts ? (
+                <ZoomableTimeSeriesCharts 
+                  data={parsed} 
+                  selectedMetrics={selected}
+                  darkMode={darkMode}
+                  isLogarithmic={type === "proxyhistograms" || 
+                                (type === "tablehistograms" && 
+                                 selected.some(m => m.includes("Latency")))}
+                />
+              ) : (
+                <TimeSeriesChart 
+                  data={parsed} 
+                  selectedMetrics={selected}
+                  darkMode={darkMode}
+                  isLogarithmic={type === "proxyhistograms" || 
+                                (type === "tablehistograms" && 
+                                 selected.some(m => m.includes("Latency")))}
+                />
+              )}
             </div>
           </>
         )}

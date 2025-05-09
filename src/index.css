@@ -39,3 +39,199 @@ body.dark-mode {
   background-color: #1e1e30 !important;
   border-color: #333 !important;
 }
+
+/* Time Range Slider Styles */
+.time-range-slider {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  width: 100%;
+  opacity: 1;
+  z-index: 10 !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: transparent !important;
+  touch-action: none !important; /* Prevent default touch actions */
+}
+
+.time-range-slider:focus {
+  outline: none;
+}
+
+/* Increase specificity and fix z-index for thumbs */
+.time-range-slider-start::-webkit-slider-thumb {
+  z-index: 10 !important;
+  pointer-events: auto !important;
+  position: relative !important;
+  touch-action: none !important;
+}
+
+.time-range-slider-end::-webkit-slider-thumb {
+  z-index: 11 !important; /* Higher than start */
+  pointer-events: auto !important;
+  position: relative !important;
+  touch-action: none !important;
+}
+
+.time-range-slider-start::-moz-range-thumb {
+  z-index: 10 !important;
+  pointer-events: auto !important;
+  position: relative !important;
+  touch-action: none !important;
+}
+
+.time-range-slider-end::-moz-range-thumb {
+  z-index: 11 !important; /* Higher than start */
+  pointer-events: auto !important;
+  position: relative !important;
+  touch-action: none !important;
+}
+
+/* Make the slider thumbs larger for better touch targets */
+.time-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px; /* Larger */
+  height: 28px; /* Larger */
+  border-radius: 50%;
+  background: #3A36DB; /* DataStax blue */
+  cursor: grab !important;
+  border: 3px solid white;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+  touch-action: none !important;
+}
+
+.time-range-slider::-moz-range-thumb {
+  width: 28px; /* Larger */
+  height: 28px; /* Larger */
+  border-radius: 50%;
+  background: #3A36DB; /* DataStax blue */
+  cursor: grab !important;
+  border: 3px solid white;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+  touch-action: none !important;
+}
+
+/* Make active state more prominent */
+.time-range-slider:active {
+  cursor: grabbing !important;
+  z-index: 20 !important;
+}
+
+.time-range-slider::-webkit-slider-thumb:active {
+  cursor: grabbing !important;
+  transform: scale(1.3);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+}
+
+.time-range-slider::-moz-range-thumb:active {
+  cursor: grabbing !important;
+  transform: scale(1.3);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+}
+
+/* Make the invisible track larger to increase hit area */
+.time-range-slider::-webkit-slider-runnable-track {
+  background: transparent !important;
+  cursor: pointer !important;
+  height: 40px !important; /* Increased height */
+}
+
+.time-range-slider::-moz-range-track {
+  background: transparent !important;
+  cursor: pointer !important;
+  height: 40px !important; /* Increased height */
+}
+
+/* Recharts Brush Styles */
+.recharts-brush {
+  cursor: move;
+}
+
+.recharts-brush .recharts-brush-traveller {
+  cursor: ew-resize !important;
+  touch-action: none;
+}
+
+.recharts-brush .recharts-brush-slide {
+  fill: rgba(58, 54, 219, 0.2);
+  stroke: #3A36DB;
+}
+
+.recharts-brush .recharts-brush-traveller rect {
+  fill: #3A36DB;
+  stroke: white;
+  stroke-width: 2px;
+  rx: 5px;
+  ry: 5px;
+  transition: all 0.2s ease;
+}
+
+.recharts-brush .recharts-brush-traveller:hover rect {
+  fill: #4e4aeb;
+  transform: scaleY(1.1);
+}
+
+/* Enhanced brush styles */
+.recharts-brush-enhanced .recharts-brush-traveller {
+  touch-action: none;
+}
+
+.recharts-brush-enhanced .recharts-brush-traveller rect {
+  filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.recharts-brush-enhanced .recharts-brush-traveller:hover rect {
+  filter: drop-shadow(0px 3px 6px rgba(0, 0, 0, 0.4));
+}
+
+.recharts-brush-enhanced .recharts-brush-traveller:active rect {
+  filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.5));
+}
+
+/* Enhanced brush texts */
+.recharts-brush-enhanced .recharts-brush-texts {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Increase hit area for brush travellers */
+.recharts-brush-traveller {
+  pointer-events: all !important;
+}
+
+/* Ensure brush handles are always visible and on top */
+.recharts-brush-traveller {
+  z-index: 10;
+}
+
+/* Dark mode specific brush styles */
+body.dark-mode .recharts-brush .recharts-brush-slide {
+  fill: rgba(58, 54, 219, 0.3);
+}
+
+body.dark-mode .recharts-brush .recharts-brush-traveller rect {
+  stroke: #ffffff;
+}
+
+body.dark-mode .recharts-brush-texts text {
+  fill: #e1e1e1;
+}
+
+/* Custom slider styles */
+.slider-track {
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.start-handle, .end-handle {
+  transition: transform 0.2s ease;
+}
+
+.start-handle:hover, .end-handle:hover {
+  transform: scale(1.1);
+}
+
+.start-handle:active, .end-handle:active {
+  transform: scale(1.2);
+  cursor: grabbing;
+}
