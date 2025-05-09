@@ -26,6 +26,177 @@ function findNumericStartIndex(parts: string[], headerColumns: string[]): number
   return -1;
 }
 
+// Helper function to normalize header names
+function normalizeHeaderName(header: string): string {
+  // Convert variations of header names to standard format
+  const lowerHeader = header.toLowerCase().trim();
+  
+  if (lowerHeader === 'alltimeblocked' || 
+      lowerHeader === 'all-time-blocked' || 
+      lowerHeader === 'all_time_blocked' || 
+      lowerHeader === 'alltime' || 
+      lowerHeader === 'all-time' || 
+      lowerHeader === 'all_time' || 
+      lowerHeader === 'all time' || 
+      lowerHeader === 'atblocked' || 
+      lowerHeader === 'atb' ||
+      lowerHeader === 'all time blocked') {
+    return 'All time blocked';
+  }
+  
+  if (lowerHeader === 'active') return 'Active';
+  if (lowerHeader === 'pending') return 'Pending';
+  if (lowerHeader === 'completed') return 'Completed';
+  if (lowerHeader === 'blocked') return 'Blocked';
+  if (lowerHeader === 'backpressure') return 'Backpressure';
+  if (lowerHeader === 'delayed') return 'Delayed';
+  if (lowerHeader === 'shared') return 'Shared';
+  if (lowerHeader === 'stolen') return 'Stolen';
+  
+  return header; // Return original if no match
+}
+
+// For diagnostic purposes
+function logHeaderMismatches(headers: string[], validTasks: string[]) {
+  const normalizedHeaders = headers.map(h => normalizeHeaderName(h));
+  
+  // Check which valid task types are missing
+  const missingTasks = validTasks
+    .filter(task => !normalizedHeaders.includes(normalizeHeaderName(task)))
+    .map(task => normalizeHeaderName(task));
+  
+  if (missingTasks.length > 0) {
+    console.warn(`Missing task types in headers: ${missingTasks.join(', ')}`);
+  }
+  
+  // Log mapping for debugging
+  console.log("Header normalization map:");
+  headers.forEach(h => {
+    console.log(`  "${h}" -> "${normalizeHeaderName(h)}"`);
+  });
+}
+
+// Helper function to process thread pool data
+function processThreadPoolLine(line: string, threadPoolHeaders: string[], currentTimestampIndex: number, timestamps: string[], series: { [metric: string]: number[] }) {
+  try {
+    // Get the expected columns order from the headers
+    const columnHeaders = threadPoolHeaders.slice(1); // Skip "Pool Name"
+    
+    // Split line by whitespace, preserving spaces for alignment
+    const parts = line.split(/\s+/);
+    
+    // Remove empty entries that might appear at the beginning due to spacing
+    while (parts.length > 0 && parts[0] === '') {
+      parts.shift();
+    }
+    
+    // If not enough parts, skip
+    if (parts.length <= columnHeaders.length) {
+      console.warn(`Skipping line with insufficient columns: ${line}`);
+      return;
+    }
+    
+    // Now we need to determine where the pool name ends and numeric values begin
+    let numericStartIdx = -1;
+    for (let i = 0; i < parts.length; i++) {
+      // Check if this part looks like a number or N/A
+      if (parts[i] === 'N/A' || /^-?\d+(\.\d+)?$/.test(parts[i].replace(/,/g, ''))) {
+        numericStartIdx = i;
+        break;
+      }
+    }
+    
+    if (numericStartIdx === -1 || numericStartIdx === 0) {
+      console.warn(`Could not find numeric values in line: ${line}`);
+      return;
+    }
+    
+    // Pool name is everything before numeric values
+    const poolName = parts.slice(0, numericStartIdx).join(' ').trim();
+    
+    // Numeric values are everything after pool name, aligning with headers
+    const numericValues = parts.slice(numericStartIdx);
+    
+    console.log(`Processed pool '${poolName}' with ${numericValues.length} values`);
+    
+    // Make sure we have values to process
+    if (numericValues.length === 0) {
+      console.warn(`No numeric values found for pool ${poolName}`);
+      return;
+    }
+    
+    // Each task type corresponds to a position in the numericValues array
+    // The expected order based on columnHeaders
+    const taskToPositionMap: { [task: string]: number } = {};
+    
+    // Map each column header to its position
+    for (let i = 0; i < columnHeaders.length; i++) {
+      const normalizedHeader = normalizeHeaderName(columnHeaders[i]);
+      taskToPositionMap[normalizedHeader] = i;
+    }
+    
+    // Log the mapping for debugging
+    console.log(`Column mapping for ${poolName}:`, taskToPositionMap);
+    
+    // The important task types we want to extract
+    const importantTasks = ["Active", "Pending", "Completed", "Blocked", "All time blocked"];
+    
+    // Process each task type that we care about
+    for (const taskType of importantTasks) {
+      const normalizedTask = normalizeHeaderName(taskType);
+      const position = taskToPositionMap[normalizedTask];
+      
+      // Skip if this task type isn't found in the headers
+      if (position === undefined) {
+        console.log(`Task type ${normalizedTask} not found in headers`);
+        continue;
+      }
+      
+      // Skip if position is out of range
+      if (position >= numericValues.length) {
+        console.log(`Position ${position} out of range for ${poolName} (max: ${numericValues.length-1})`);
+        continue;
+      }
+      
+      const value = numericValues[position];
+      
+      // Skip N/A values or empty values
+      if (value === "N/A" || value === "") continue;
+      
+      // Parse the numeric value, handling commas
+      const numValue = parseFloat(value.replace(/,/g, ""));
+      if (isNaN(numValue)) {
+        console.log(`Skipping non-numeric value: ${value} for ${normalizedTask}`);
+        continue;
+      }
+      
+      // Original format: "ThreadPool | Task" (important for backward compatibility)
+      const originalMetricName = `${poolName} | ${normalizedTask}`;
+      
+      // New format: "Pool | ThreadPool | Task"
+      const newMetricName = `Pool | ${poolName} | ${normalizedTask}`;
+      
+      console.log(`Adding metric: ${newMetricName} = ${numValue}`);
+      
+      // Initialize series with NaN values if it doesn't exist
+      if (!series[originalMetricName]) {
+        series[originalMetricName] = Array(timestamps.length).fill(NaN);
+      }
+      
+      // Store the value at the current timestamp index in the original format
+      series[originalMetricName][currentTimestampIndex] = numValue;
+      
+      // Also store in the new format for future compatibility
+      if (!series[newMetricName]) {
+        series[newMetricName] = Array(timestamps.length).fill(NaN);
+      }
+      series[newMetricName][currentTimestampIndex] = numValue;
+    }
+  } catch (error) {
+    console.warn(`Error processing Thread Pool line: ${line}`, error);
+  }
+}
+
 export function parseTpstats(content: string): ParsedTimeSeries {
   console.log("Starting tpstats parser for cassandra format with section handling");
   
@@ -49,10 +220,12 @@ export function parseTpstats(content: string): ParsedTimeSeries {
     }
     let currentSection = Section.None;
     
-    // Valid task types for thread pools
+    // Valid task types for thread pools - expanded to capture variations in naming
     const VALID_THREAD_TASKS = [
       "Active", "Pending", "Backpressure", "Delayed", 
-      "Shared", "Stolen", "Completed", "Blocked", "All time blocked"
+      "Shared", "Stolen", "Completed", "Blocked", "All time blocked",
+      "AllTimeBlocked", "All-time-blocked", "All_time_blocked",
+      "AllTime", "All-Time", "All_Time", "ATBlocked", "ATB"
     ];
     
     // First pass: collect all timestamps
@@ -69,6 +242,9 @@ export function parseTpstats(content: string): ParsedTimeSeries {
     }
     
     console.log(`Found ${timestamps.length} timestamps`);
+    
+    // Debug: Print every line encountered to help identify parsing issues
+    console.log(`Total lines in file: ${lines.length}`);
     
     // Second pass: process data by section
     for (let i = 0; i < lines.length; i++) {
@@ -93,11 +269,172 @@ export function parseTpstats(content: string): ParsedTimeSeries {
       }
       
       // Detect Thread Pool section (look for "Pools" header)
-      if ((line.includes("Pools") || line.includes("Pool Name") || line.includes("PoolName")) && 
-          line.includes("Active")) {
-        threadPoolHeaders = line.split(/\s+/).filter(Boolean);
-        console.log("Found Thread Pool headers:", threadPoolHeaders);
+      if (((line.includes("Pool") || line.includes("Pools")) && 
+           line.includes("Active") && line.includes("Pending") && 
+           line.includes("Completed") && line.includes("Blocked")) ||
+          ((line.includes("PoolName") || line.includes("Pool Name")) && 
+           line.toLowerCase().includes("active"))) {
+        
+        // Original line with all whitespace preserved for position analysis
+        const rawHeaderLine = lines[i];
+        console.log("Found thread pool header raw line:", JSON.stringify(rawHeaderLine));
+        
+        // Define the exact column names we're looking for
+        const COLUMN_NAMES = ["Pool Name", "Active", "Pending", "Completed", "Blocked", "All time blocked"];
+        
+        // Find positions of each column in the header line
+        let columnPositions: { [column: string]: { start: number, width: number } } = {};
+        
+        // First, find Pool Name position (always starts at beginning)
+        columnPositions["Pool Name"] = { start: 0, width: 0 };
+        
+        // Find Active position
+        const activeIdx = rawHeaderLine.indexOf("Active");
+        if (activeIdx > 0) {
+          columnPositions["Pool Name"].width = activeIdx;
+          columnPositions["Active"] = { start: activeIdx, width: 0 };
+        }
+        
+        // Find Pending position
+        const pendingIdx = rawHeaderLine.indexOf("Pending");
+        if (pendingIdx > 0) {
+          columnPositions["Active"].width = pendingIdx - columnPositions["Active"].start;
+          columnPositions["Pending"] = { start: pendingIdx, width: 0 };
+        }
+        
+        // Find Completed position
+        const completedIdx = rawHeaderLine.indexOf("Completed");
+        if (completedIdx > 0) {
+          columnPositions["Pending"].width = completedIdx - columnPositions["Pending"].start;
+          columnPositions["Completed"] = { start: completedIdx, width: 0 };
+        }
+        
+        // Find Blocked position
+        const blockedIdx = rawHeaderLine.indexOf("Blocked");
+        if (blockedIdx > 0) {
+          columnPositions["Completed"].width = blockedIdx - columnPositions["Completed"].start;
+          columnPositions["Blocked"] = { start: blockedIdx, width: 0 };
+        }
+        
+        // Find All time blocked position (special care for spaces)
+        const allTimeBlockedIdx = rawHeaderLine.indexOf("All time blocked");
+        if (allTimeBlockedIdx > 0) {
+          columnPositions["Blocked"].width = allTimeBlockedIdx - columnPositions["Blocked"].start;
+          columnPositions["All time blocked"] = { 
+            start: allTimeBlockedIdx, 
+            width: rawHeaderLine.length - allTimeBlockedIdx
+          };
+        }
+        
+        // Log detected positions
+        console.log("Column positions:", JSON.stringify(columnPositions));
+        
+        // Save all detected column names for task dropdown
+        threadPoolHeaders = Object.keys(columnPositions);
+        console.log("Thread pool headers:", threadPoolHeaders);
+        
         currentSection = Section.ThreadPool;
+        console.log("Entering Thread Pool section at line:", i + 1);
+        
+        // Process thread pool data rows until we reach another section marker
+        for (let j = i + 1; j < lines.length; j++) {
+          // Use the raw line to maintain positions
+          const rawDataLine = lines[j];
+          const dataLine = rawDataLine.trim();
+          
+          // Skip empty lines
+          if (!dataLine) continue;
+          
+          // Check if we've reached another section or timestamp
+          if (dataLine.startsWith("Pools") || 
+              dataLine.startsWith("Meters") || 
+              dataLine.startsWith("Messages") || 
+              dataLine.match(/^\d{4}-\d{2}-\d{2}/) ||
+              dataLine === "==========") {
+            console.log("Exiting thread pool section at line:", j + 1);
+            i = j - 1; // Move the outer loop to this position (minus 1 because it will increment)
+            break;
+          }
+          
+          try {
+            // If this looks like a header line, skip it
+            if (dataLine.toLowerCase().includes("pool") && dataLine.toLowerCase().includes("name")) {
+              console.log("Skipping header line:", dataLine);
+              continue;
+            }
+            
+            console.log("Processing thread pool data line:", JSON.stringify(rawDataLine));
+            
+            // For each column, extract the value at its position
+            for (const column of Object.keys(columnPositions)) {
+              // Skip Pool Name column when processing values
+              if (column === "Pool Name") continue;
+              
+              // Get column position info
+              const { start, width } = columnPositions[column];
+              
+              // Make sure we don't go out of bounds
+              if (start >= rawDataLine.length) {
+                console.log(`Column position ${start} out of range for line length ${rawDataLine.length}`);
+                continue;
+              }
+              
+              // Extract substring at column position with appropriate width
+              const value = rawDataLine.substring(start, start + width).trim();
+              console.log(`Extracted raw value for ${column}: "${value}"`);
+              
+              // Skip if no value or N/A
+              if (!value || value === "N/A") continue;
+              
+              // Parse the value
+              let numValue: number;
+              try {
+                numValue = parseFloat(value.replace(/,/g, ""));
+                if (isNaN(numValue)) {
+                  console.log(`Failed to parse value for ${column}: "${value}"`);
+                  continue;
+                }
+              } catch (e) {
+                console.log(`Error parsing value for ${column}: "${value}"`, e);
+                continue;
+              }
+              
+              // Extract the pool name from the beginning of the line up to Active column
+              const poolName = rawDataLine.substring(0, columnPositions["Active"].start).trim();
+              
+              // Skip if empty pool name
+              if (!poolName) {
+                console.log(`Empty pool name in line: ${rawDataLine}`);
+                continue;
+              }
+              
+              // Normalize column name as task type
+              const taskType = normalizeHeaderName(column);
+              
+              // Create metric names
+              const originalMetricName = `${poolName} | ${taskType}`;
+              const newMetricName = `Pool | ${poolName} | ${taskType}`;
+              
+              console.log(`Adding thread pool metric: ${newMetricName} = ${numValue}`);
+              
+              // Initialize series arrays if needed
+              if (!series[originalMetricName]) {
+                series[originalMetricName] = Array(timestamps.length).fill(NaN);
+              }
+              
+              if (!series[newMetricName]) {
+                series[newMetricName] = Array(timestamps.length).fill(NaN);
+              }
+              
+              // Store values at current timestamp
+              series[originalMetricName][currentTimestampIndex] = numValue;
+              series[newMetricName][currentTimestampIndex] = numValue;
+            }
+          } catch (error) {
+            console.warn(`Error processing thread pool line: ${dataLine}`, error);
+          }
+        }
+        
         continue;
       }
       
@@ -125,254 +462,228 @@ export function parseTpstats(content: string): ParsedTimeSeries {
         
         console.log("Found Message Type headers:", messageTypeHeaders);
         currentSection = Section.MessageType;
+        console.log("Entering Message Type section at line:", i + 1);
+        
+        // Loop forward to process Message Type data
+        for (let j = i + 1; j < lines.length; j++) {
+          const dataLine = lines[j].trim();
+          
+          // Skip empty lines
+          if (!dataLine) continue;
+          
+          // Check if we've reached another section or timestamp
+          if (dataLine.startsWith("Pools") || 
+              dataLine.startsWith("Meters") || 
+              dataLine.startsWith("Messages") || 
+              dataLine.match(/^\d{4}-\d{2}-\d{2}/) ||
+              dataLine === "==========") {
+            console.log("Exiting message type section at line:", j + 1);
+            i = j - 1; // Move the outer loop to this position (minus 1 because it will increment)
+            break;
+          }
+          
+          try {
+            // If header line or latency waiting line, skip
+            if (dataLine.includes("Messages") || 
+                dataLine.includes("Message type") || 
+                dataLine.includes("Latency waiting")) {
+              continue;
+            }
+            
+            // Split line by whitespace
+            const parts = dataLine.split(/\s+/).filter(Boolean);
+            
+            // Need at least message type and dropped value
+            if (parts.length < 2) continue;
+            
+            // For debug output
+            console.log(`Processing message type line: ${dataLine}`);
+            console.log(`Split into parts: ${parts.join(" | ")}`);
+            
+            // Message type is typically the first column, 
+            // and Dropped (which we want) is the second column
+            const messageType = parts[0];
+            
+            // Skip if blank or header-like
+            if (!messageType || messageType === "Message" || messageType === "type") continue;
+            
+            // Get the Dropped value (should be second column)
+            if (parts.length >= 2) {
+              const droppedValue = parts[1];
+              
+              // Skip N/A values
+              if (droppedValue === "N/A") continue;
+              
+              // Parse the numeric value
+              const numValue = parseFloat(droppedValue.replace(/,/g, ""));
+              if (isNaN(numValue)) {
+                console.log(`Skipping non-numeric dropped value: ${droppedValue} for ${messageType}`);
+                continue;
+              }
+              
+              // Create both metric name formats for compatibility
+              // Original format: "Message Type | TYPE | Dropped"
+              const originalMetricName = `Message Type | ${messageType} | Dropped`;
+              // New format: "Message | TYPE | Dropped"
+              const newMetricName = `Message | ${messageType} | Dropped`;
+              
+              console.log(`Adding message metric: ${newMetricName} = ${numValue}`);
+              
+              // Initialize and store in both formats
+              if (!series[originalMetricName]) {
+                series[originalMetricName] = Array(timestamps.length).fill(NaN);
+              }
+              series[originalMetricName][currentTimestampIndex] = numValue;
+              
+              if (!series[newMetricName]) {
+                series[newMetricName] = Array(timestamps.length).fill(NaN);
+              }
+              series[newMetricName][currentTimestampIndex] = numValue;
+              
+              // Now process latency percentiles if available
+              // Start from index 2 which would be the 50% value
+              for (let k = 2; k < parts.length && k < messageTypeHeaders.length; k++) {
+                const percentile = messageTypeHeaders[k]; // e.g., "50%"
+                const percentileValue = parts[k];
+                
+                // Skip N/A values
+                if (percentileValue === "N/A") continue;
+                
+                // Parse the numeric value
+                const numPercentileValue = parseFloat(percentileValue.replace(/,/g, ""));
+                if (isNaN(numPercentileValue)) {
+                  console.log(`Skipping non-numeric percentile value: ${percentileValue} for ${messageType} at ${percentile}`);
+                  continue;
+                }
+                
+                // Create metric name for latency percentile
+                const latencyMetricName = `Message | ${messageType} | Latency | ${percentile}`;
+                
+                console.log(`Adding latency metric: ${latencyMetricName} = ${numPercentileValue}`);
+                
+                // Initialize series with NaN values if it doesn't exist
+                if (!series[latencyMetricName]) {
+                  series[latencyMetricName] = Array(timestamps.length).fill(NaN);
+                }
+                
+                // Store the value at the current timestamp index
+                series[latencyMetricName][currentTimestampIndex] = numPercentileValue;
+              }
+            }
+          } catch (error) {
+            console.warn(`Error processing Message Type line: ${dataLine}`, error);
+          }
+        }
+        
         continue;
       }
       
       // Detect Meters section (look for "Meters" header)
-      if (line.includes("Meters") && (line.includes("Rate") || line.includes("Count"))) {
+      if (line.includes("Meters") && 
+          (line.includes("Rate") || line.includes("Count") || line.includes("1-min") || 
+           line.includes("5-min") || line.includes("15-min"))) {
+        
         metersHeaders = line.split(/\s+/).filter(Boolean);
         console.log("Found Meters headers:", metersHeaders);
         currentSection = Section.Meters;
-        continue;
-      }
-      
-      // Process Thread Pool data
-      if (currentSection === Section.ThreadPool && 
-          threadPoolHeaders.length > 0 && 
-          currentTimestampIndex !== -1 && 
-          !line.includes("Pools") && 
-          !line.includes("Pool Name") &&
-          !line.includes("PoolName") &&
-          !line.includes("Message") &&
-          !line.includes("Meters") &&
-          !/^[\s=]*$/.test(line)) {
+        console.log("Entering Meters section at line:", i + 1);
         
-        try {
-          // Split line by whitespace
-          const parts = line.split(/\s+/).filter(Boolean);
+        // Process Meters data
+        for (let j = i + 1; j < lines.length; j++) {
+          const dataLine = lines[j].trim();
           
-          // Need enough parts to be a valid data row
-          if (parts.length < 2) continue;
+          // Skip empty lines
+          if (!dataLine) continue;
           
-          // Find where numeric values start
-          const numericStartIndex = findNumericStartIndex(parts, threadPoolHeaders);
-          if (numericStartIndex === -1) continue;
-          
-          const poolName = parts.slice(0, numericStartIndex).join(" ");
-          const numericValues = parts.slice(numericStartIndex);
-          
-          // Process each thread pool metric
-          for (let j = 0; j < numericValues.length && j + numericStartIndex < threadPoolHeaders.length; j++) {
-            const columnName = threadPoolHeaders[j + numericStartIndex]; // Skip pool name column
-            
-            // Skip if not a valid task type
-            if (!VALID_THREAD_TASKS.includes(columnName)) continue;
-            
-            const value = numericValues[j];
-            
-            // Skip N/A values
-            if (value === "N/A") continue;
-            
-            // Parse the numeric value, handling commas
-            const numValue = parseFloat(value.replace(/,/g, ""));
-            if (isNaN(numValue)) continue;
-            
-            // Create both naming formats for backward compatibility
-            // Original format: "ThreadPool | Task"
-            const originalMetricName = `${poolName} | ${columnName}`;
-            // New format: "Pool | ThreadPool | Task"
-            const newMetricName = `Pool | ${poolName} | ${columnName}`;
-            
-            // Initialize series with NaN values if it doesn't exist
-            if (!series[originalMetricName]) {
-              series[originalMetricName] = Array(timestamps.length).fill(NaN);
-            }
-            
-            // Store the value at the current timestamp index in the original format
-            series[originalMetricName][currentTimestampIndex] = numValue;
-            
-            // Also store in the new format for future compatibility
-            if (!series[newMetricName]) {
-              series[newMetricName] = Array(timestamps.length).fill(NaN);
-            }
-            series[newMetricName][currentTimestampIndex] = numValue;
+          // Check if we've reached another section or timestamp
+          if (dataLine.startsWith("Pools") || 
+              dataLine.startsWith("Meters") || 
+              dataLine.startsWith("Messages") || 
+              dataLine.match(/^\d{4}-\d{2}-\d{2}/) ||
+              dataLine === "==========") {
+            console.log("Exiting meters section at line:", j + 1);
+            i = j - 1; // Move the outer loop to this position (minus 1 because it will increment)
+            break;
           }
-        } catch (error) {
-          console.warn(`Error processing Thread Pool line: ${line}`, error);
-        }
-      }
-      
-      // Process Message Type data
-      else if (currentSection === Section.MessageType && 
-               messageTypeHeaders.length > 0 && 
-               currentTimestampIndex !== -1 &&
-               !/^[\s=]*$/.test(line) &&
-               !line.includes("Messages") &&
-               !line.includes("Message type") &&
-               !line.includes("Latency waiting")) {
-        
-        try {
-          // Split line by whitespace
-          const parts = line.split(/\s+/).filter(Boolean);
           
-          // Need at least message type and dropped value
-          if (parts.length < 2) continue;
-          
-          // Message type is typically the first column, 
-          // and Dropped (which we want) is the second column
-          const messageType = parts[0];
-          
-          // Skip if blank or header-like
-          if (!messageType || messageType === "Message" || messageType === "type") continue;
-          
-          // Get the Dropped value (should be second column)
-          if (parts.length >= 2) {
-            const droppedValue = parts[1];
+          try {
+            console.log(`Processing meters line: "${dataLine}"`);
             
-            // Skip N/A values
-            if (droppedValue === "N/A") continue;
+            // Skip header line
+            if (dataLine.includes("Meters")) continue;
             
-            // Parse the numeric value
-            const numValue = parseFloat(droppedValue.replace(/,/g, ""));
-            if (isNaN(numValue)) continue;
+            // Split the line by whitespace
+            const parts = dataLine.split(/\s+/).filter(Boolean);
             
-            // Create both metric name formats for compatibility
-            // Original format: "Message Type | TYPE | Dropped"
-            const originalMetricName = `Message Type | ${messageType} | Dropped`;
-            // New format: "Message | TYPE | Dropped"
-            const newMetricName = `Message | ${messageType} | Dropped`;
-            
-            // Initialize and store in both formats
-            if (!series[originalMetricName]) {
-              series[originalMetricName] = Array(timestamps.length).fill(NaN);
+            // Need at least a meter name and one value
+            if (parts.length < 2) {
+              console.log(`Skipping meters line - insufficient parts: ${dataLine}`);
+              continue;
             }
-            series[originalMetricName][currentTimestampIndex] = numValue;
             
-            if (!series[newMetricName]) {
-              series[newMetricName] = Array(timestamps.length).fill(NaN);
+            // Find where numeric values start
+            let numericStartIdx = -1;
+            let meterName = "";
+            
+            // Check each part to find where the numbers begin
+            for (let k = 0; k < parts.length; k++) {
+              const part = parts[k];
+              // If this part looks like a number or N/A, this is where values start
+              if (part === "N/A" || /^-?\d+(\.\d+)?$/.test(part.replace(/,/g, ""))) {
+                numericStartIdx = k;
+                meterName = parts.slice(0, k).join(" ");
+                break;
+              }
             }
-            series[newMetricName][currentTimestampIndex] = numValue;
             
-            // Now process latency percentiles if available
-            // Start from index 2 which would be the 50% value
-            for (let j = 2; j < parts.length && j < messageTypeHeaders.length; j++) {
-              const percentile = messageTypeHeaders[j]; // e.g., "50%"
-              const percentileValue = parts[j];
+            // If we couldn't find where values start, skip this line
+            if (numericStartIdx === -1 || meterName === "") {
+              console.log(`Could not locate numeric values in meter line: ${dataLine}`);
+              continue;
+            }
+            
+            console.log(`Found meter "${meterName}" with values starting at position ${numericStartIdx}`);
+            
+            // Get the numeric values 
+            const values = parts.slice(numericStartIdx);
+            
+            // Skip if no values
+            if (values.length === 0) continue;
+            
+            // Get the metric headers (skip the "Meters" header)
+            const metricHeaders = metersHeaders.slice(1);
+            
+            // Process each value with its corresponding header
+            for (let k = 0; k < values.length && k < metricHeaders.length; k++) {
+              const metricType = metricHeaders[k];
+              const value = values[k];
               
               // Skip N/A values
-              if (percentileValue === "N/A") continue;
+              if (value === "N/A") continue;
               
               // Parse the numeric value
-              const numPercentileValue = parseFloat(percentileValue.replace(/,/g, ""));
-              if (isNaN(numPercentileValue)) continue;
+              const numValue = parseFloat(value.replace(/,/g, ""));
+              if (isNaN(numValue)) continue;
               
-              // Create metric name for latency percentile
-              const latencyMetricName = `Message | ${messageType} | Latency | ${percentile}`;
+              // Create metric name in the format: "Meter | METER_NAME | METRIC_TYPE"
+              const metricName = `Meter | ${meterName} | ${metricType}`;
               
-              // Initialize series with NaN values if it doesn't exist
-              if (!series[latencyMetricName]) {
-                series[latencyMetricName] = Array(timestamps.length).fill(NaN);
+              console.log(`Adding meter metric: ${metricName} = ${numValue}`);
+              
+              // Initialize series if it doesn't exist
+              if (!series[metricName]) {
+                series[metricName] = Array(timestamps.length).fill(NaN);
               }
               
-              // Store the value at the current timestamp index
-              series[latencyMetricName][currentTimestampIndex] = numPercentileValue;
+              // Store the value
+              series[metricName][currentTimestampIndex] = numValue;
             }
+          } catch (error) {
+            console.warn(`Error processing Meters line: ${dataLine}`, error);
           }
-        } catch (error) {
-          console.warn(`Error processing Message Type line: ${line}`, error);
         }
-      }
-      
-      // Process Meters data
-      else if (currentSection === Section.Meters && 
-               metersHeaders.length > 0 && 
-               currentTimestampIndex !== -1 &&
-               !/^[\s=]*$/.test(line) &&
-               !line.includes("Meters")) {
         
-        try {
-          // Split line by whitespace
-          const parts = line.split(/\s+/).filter(Boolean);
-          
-          // Need at least meter name and one value
-          if (parts.length < 2) continue;
-          
-          // Find where numeric values start
-          // For meters, the first column is usually the meter name
-          const meterName = parts[0];
-          if (parts.length > 1) {
-            const secondPart = parts[1];
-            // If second part doesn't start with a number, it's part of the meter name
-            if (!/^-?\d+\.?\d*$/.test(secondPart) && secondPart !== "N/A") {
-              // Combine parts until we find a number
-              let meterParts = [meterName];
-              let numericStartIdx = 1;
-              while (numericStartIdx < parts.length) {
-                if (/^-?\d+\.?\d*$/.test(parts[numericStartIdx]) || parts[numericStartIdx] === "N/A") {
-                  break;
-                }
-                meterParts.push(parts[numericStartIdx]);
-                numericStartIdx++;
-              }
-              const fullMeterName = meterParts.join(" ");
-              
-              // Process each metric type for this meter
-              for (let j = 0; j < metersHeaders.length - 1 && numericStartIdx + j < parts.length; j++) {
-                const metricType = metersHeaders[j + 1]; // Skip the "Meters" header
-                const value = parts[numericStartIdx + j];
-                
-                // Skip N/A values
-                if (value === "N/A") continue;
-                
-                // Parse the numeric value
-                const numValue = parseFloat(value.replace(/,/g, ""));
-                if (isNaN(numValue)) continue;
-                
-                // Create metric name: "Meter | METER_NAME | METRIC_TYPE"
-                const metricName = `Meter | ${fullMeterName} | ${metricType}`;
-                
-                // Initialize series with NaN values if it doesn't exist
-                if (!series[metricName]) {
-                  series[metricName] = Array(timestamps.length).fill(NaN);
-                }
-                
-                // Store the value at the current timestamp index
-                series[metricName][currentTimestampIndex] = numValue;
-              }
-            } else {
-              // Single word meter name, process normally
-              for (let j = 0; j < metersHeaders.length - 1 && j + 1 < parts.length; j++) {
-                const metricType = metersHeaders[j + 1]; // Skip the "Meters" header
-                const value = parts[j + 1];
-                
-                // Skip N/A values
-                if (value === "N/A") continue;
-                
-                // Parse the numeric value
-                const numValue = parseFloat(value.replace(/,/g, ""));
-                if (isNaN(numValue)) continue;
-                
-                // Create metric name: "Meter | METER_NAME | METRIC_TYPE"
-                const metricName = `Meter | ${meterName} | ${metricType}`;
-                
-                // Initialize series with NaN values if it doesn't exist
-                if (!series[metricName]) {
-                  series[metricName] = Array(timestamps.length).fill(NaN);
-                }
-                
-                // Store the value at the current timestamp index
-                series[metricName][currentTimestampIndex] = numValue;
-              }
-            }
-          }
-        } catch (error) {
-          console.warn(`Error processing Meters line: ${line}`, error);
-        }
-      }
-      
-      // Check if we're leaving the current section (hit next section marker)
-      if (line.startsWith("Pools") || line.startsWith("Meters") || line.startsWith("Messages") || line.match(/^\d{4}-\d{2}-\d{2}/)) {
-        currentSection = Section.None;
+        continue;
       }
     }
     
@@ -384,14 +695,58 @@ export function parseTpstats(content: string): ParsedTimeSeries {
     const threadPoolMetricsOld = Object.keys(series).filter(m => !m.startsWith("Message Type") && !m.startsWith("Pool |") && !m.startsWith("Meter |") && !m.startsWith("Message |"));
     const messageTypeMetricsOld = Object.keys(series).filter(m => m.startsWith("Message Type"));
     const threadPoolMetricsNew = Object.keys(series).filter(m => m.startsWith("Pool |"));
-    const messageTypeMetricsNew = Object.keys(series).filter(m => m.startsWith("Message |"));
+    const messageTypeMetricsNew = Object.keys(series).filter(m => m.startsWith("Message |") && !m.includes("Latency"));
+    const latencyMetrics = Object.keys(series).filter(m => m.includes("Latency"));
     const metersMetrics = Object.keys(series).filter(m => m.startsWith("Meter |"));
     
+    // Extract unique thread pool names for debugging
+    const threadPoolNames = new Set<string>();
+    threadPoolMetricsOld.forEach(m => {
+      const parts = m.split(" | ");
+      if (parts.length >= 1) {
+        threadPoolNames.add(parts[0]);
+      }
+    });
+    
+    // Extract unique task types for debugging
+    const taskTypes = new Set<string>();
+    threadPoolMetricsOld.forEach(m => {
+      const parts = m.split(" | ");
+      if (parts.length >= 2) {
+        taskTypes.add(parts[1]);
+      }
+    });
+    
+    console.log(`Found ${threadPoolNames.size} unique thread pool names:`, Array.from(threadPoolNames).join(", "));
+    console.log(`Found ${taskTypes.size} unique task types:`, Array.from(taskTypes).join(", "));
     console.log(`Found ${threadPoolMetricsOld.length} old-format Thread Pool metrics`);
     console.log(`Found ${messageTypeMetricsOld.length} old-format Message Type metrics`);
     console.log(`Found ${threadPoolMetricsNew.length} new-format Thread Pool metrics`);
     console.log(`Found ${messageTypeMetricsNew.length} new-format Message Type metrics`);
+    console.log(`Found ${latencyMetrics.length} Latency metrics`);
     console.log(`Found ${metersMetrics.length} Meters metrics`);
+    
+    // Diagnostic: Check for missing task types
+    if (threadPoolMetricsNew.length > 0) {
+      const poolTaskTypes = new Set<string>();
+      threadPoolMetricsNew.forEach(metric => {
+        const parts = metric.split(" | ");
+        if (parts.length >= 3) {
+          poolTaskTypes.add(parts[2]); // Extract the task type
+        }
+      });
+      
+      console.log("Detected task types in the data:", Array.from(poolTaskTypes).join(", "));
+      
+      // Check which valid task types are missing from the data
+      const missingTaskTypes = VALID_THREAD_TASKS
+        .map(task => normalizeHeaderName(task))
+        .filter(task => !Array.from(poolTaskTypes).includes(task));
+      
+      if (missingTaskTypes.length > 0) {
+        console.warn(`Missing task types in the data: ${missingTaskTypes.join(", ")}`);
+      }
+    }
     
     if (metricCount > 0) {
       // Log sample data to verify
@@ -409,6 +764,10 @@ export function parseTpstats(content: string): ParsedTimeSeries {
       
       if (messageTypeMetricsNew.length > 0) {
         console.log(`Sample new-format Message Type metric: ${messageTypeMetricsNew[0]}`);
+      }
+      
+      if (latencyMetrics.length > 0) {
+        console.log(`Sample Latency metric: ${latencyMetrics[0]}`);
       }
       
       if (metersMetrics.length > 0) {

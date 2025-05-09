@@ -9,6 +9,10 @@ export function parseMpstat(content: string): ParsedTimeSeries {
   const timestamps: string[] = [];
   const series: { [metric: string]: number[] } = {};
   
+  // Get today's date to construct full timestamp (if file only has time)
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
   // Process all lines
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -16,7 +20,19 @@ export function parseMpstat(content: string): ParsedTimeSeries {
     // Look for timestamp lines that include CPU metrics header
     if (line.match(/^\d{2}:\d{2}:\d{2}\s+CPU/) && line.includes("%usr")) {
       // Extract timestamp
-      const timestamp = line.split(/\s+/)[0];
+      const timeStr = line.split(/\s+/)[0]; // Format: HH:MM:SS
+      
+      // Create a full ISO timestamp
+      let timestamp;
+      
+      // Check if the timestamp includes date information
+      if (timeStr.includes('-') && timeStr.length > 10) {
+        // Already has date information (yyyy-mm-dd format)
+        timestamp = new Date(timeStr).toISOString();
+      } else {
+        // Just time - add today's date
+        timestamp = new Date(`${dateStr}T${timeStr}`).toISOString();
+      }
       
       // Skip if we've already processed this timestamp
       if (timestamps.includes(timestamp)) {
@@ -89,13 +105,27 @@ export function parseMpstat(content: string): ParsedTimeSeries {
     }
   });
   
+  console.log("Processed mpstat data:", {
+    timestampCount: timestamps.length,
+    metricCount: Object.keys(series).length,
+    firstTimestamp: timestamps.length > 0 ? timestamps[0] : null,
+    lastTimestamp: timestamps.length > 0 ? timestamps[timestamps.length - 1] : null
+  });
+  
   // If we didn't find any data, create a minimal fallback
   if (Object.keys(series).length === 0 || timestamps.length === 0) {
+    const now = new Date();
+    const fallbackTimestamps = [];
+    for (let i = 0; i < 5; i++) {
+      const time = new Date(now.getTime() - (4 - i) * 60000);
+      fallbackTimestamps.push(time.toISOString());
+    }
+    
     return {
-      timestamps: ["00:00", "00:01", "00:02", "00:03", "00:04"],
+      timestamps: fallbackTimestamps,
       series: {
-        "CPU %usr": [50, 60, 70, 65, 55],
-        "CPU %sys": [25, 20, 15, 30, 25]
+        "CPU all %usr": [50, 60, 70, 65, 55],
+        "CPU all %sys": [25, 20, 15, 30, 25]
       }
     };
   }

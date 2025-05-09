@@ -50,6 +50,41 @@ const formatDate = (timestamp: string, rangeInDays: number): string => {
   }
 };
 
+// Helper function to format large numbers in a more user-friendly way
+const formatLargeNumber = (value: number): string => {
+  // For negative numbers, apply the formatter to the absolute value and add the sign back
+  if (value < 0) {
+    return '-' + formatLargeNumber(Math.abs(value));
+  }
+
+  // For trillions
+  if (value >= 1_000_000_000_000) {
+    return (value / 1_000_000_000_000).toFixed(1) + 'T';
+  }
+  // For billions
+  if (value >= 1_000_000_000) {
+    return (value / 1_000_000_000).toFixed(1) + 'B';
+  }
+  // For millions
+  if (value >= 1_000_000) {
+    return (value / 1_000_000).toFixed(1) + 'M';
+  }
+  // For thousands
+  if (value >= 1_000) {
+    return (value / 1_000).toFixed(1) + 'K';
+  }
+  // For values less than 1 with precision
+  if (value > 0 && value < 1) {
+    return value.toPrecision(2);
+  }
+  // For integer-like values
+  if (Math.floor(value) === value) {
+    return value.toString();
+  }
+  // For other values with decimals
+  return value.toFixed(1);
+};
+
 interface ChartProps {
   data: DataPoint[];
   dataKey: string;
@@ -233,20 +268,7 @@ export const ZoomableChart: React.FC<ChartProps> = ({
               tickFormatter={(value) => {
                 // Format numbers nicely
                 if (typeof value === 'number') {
-                  // For very large or very small numbers
-                  if (value > 1000000 || value < 0.01) {
-                    return value.toExponential(2);
-                  }
-                  // For medium sized numbers
-                  if (value > 1000) {
-                    return `${(value/1000).toFixed(1)}k`;
-                  }
-                  // For values less than 1
-                  if (value < 1 && value > 0) {
-                    return value.toPrecision(2);
-                  }
-                  // Default formatting for regular numbers
-                  return value.toFixed(1);
+                  return formatLargeNumber(value);
                 }
                 return value;
               }}

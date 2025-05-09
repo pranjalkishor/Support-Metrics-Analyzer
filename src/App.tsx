@@ -15,6 +15,7 @@ import { TableHistogramSelector } from "./components/TableHistogramSelector";
 import { TPStatsSelector } from "./components/TPStatsSelector";
 import { MPStatSelector } from "./components/MPStatSelector";
 import { IostatSelector } from "./components/IostatSelector";
+import { OsTopCpuVisualizer } from "./components/OsTopCpuVisualizer";
 
 const DATASTAX_COLORS = {
   primary: '#3A36DB', // DataStax blue
@@ -100,9 +101,7 @@ function App() {
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true';
   });
-  const [useZoomableCharts, setUseZoomableCharts] = useState(() => {
-    return localStorage.getItem('useZoomableCharts') !== 'false'; // Default to true
-  });
+  const [fileContent, setFileContent] = useState<string>("");
 
   useEffect(() => {
     if (darkMode) {
@@ -306,6 +305,13 @@ function App() {
           }
         }
       }
+      else if (type === "os_top_cpu") {
+        // For os_top_cpu, we'll handle it differently
+        // Just set the type and let the specialized component handle it
+        setType(type);
+        setFileContent(text);
+        return; // Early return to avoid generic handling below
+      }
       
       // Generic handling for any parsed data
       if (parsedData && Object.keys(parsedData.series).length > 0) {
@@ -336,12 +342,6 @@ function App() {
     localStorage.setItem('darkMode', String(newDarkMode));
   };
 
-  const toggleChartType = () => {
-    const newUseZoomableCharts = !useZoomableCharts;
-    setUseZoomableCharts(newUseZoomableCharts);
-    localStorage.setItem('useZoomableCharts', String(newUseZoomableCharts));
-  };
-
   return (
     <div style={{ 
       minHeight: '100vh',
@@ -369,27 +369,15 @@ function App() {
             Upload Metric File
           </h2>
           <FileUpload onFiles={handleFiles} />
-          
-          <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center' }}>
-            <label style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              cursor: 'pointer',
-              marginRight: '10px',
-              color: darkMode ? "#e1e1e1" : "inherit"
-            }}>
-              <input 
-                type="checkbox" 
-                checked={useZoomableCharts} 
-                onChange={toggleChartType} 
-                style={{ marginRight: '6px' }}
-              />
-              Enable zoomable synchronized charts
-            </label>
-          </div>
         </div>
         
-        {parsed && (
+        {type === "os_top_cpu" ? (
+          // Special handling for os_top_cpu files
+          <OsTopCpuVisualizer 
+            fileContent={fileContent} 
+            darkMode={darkMode} 
+          />
+        ) : parsed && (
           <>
             {type === "tablehistograms" ? (
               <TableHistogramSelector
@@ -434,25 +422,14 @@ function App() {
               padding: '24px',
               marginTop: '24px'
             }}>
-              {useZoomableCharts ? (
-                <ZoomableTimeSeriesCharts 
-                  data={parsed} 
-                  selectedMetrics={selected}
-                  darkMode={darkMode}
-                  isLogarithmic={type === "proxyhistograms" || 
-                                (type === "tablehistograms" && 
-                                 selected.some(m => m.includes("Latency")))}
-                />
-              ) : (
-                <TimeSeriesChart 
-                  data={parsed} 
-                  selectedMetrics={selected}
-                  darkMode={darkMode}
-                  isLogarithmic={type === "proxyhistograms" || 
-                                (type === "tablehistograms" && 
-                                 selected.some(m => m.includes("Latency")))}
-                />
-              )}
+              <ZoomableTimeSeriesCharts 
+                data={parsed} 
+                selectedMetrics={selected}
+                darkMode={darkMode}
+                isLogarithmic={type === "proxyhistograms" || 
+                              (type === "tablehistograms" && 
+                               selected.some(m => m.includes("Latency")))}
+              />
             </div>
           </>
         )}
@@ -486,6 +463,12 @@ function detectFileType(filename: string, content: string) {
   if (filename.includes("tablehistograms")) {
     console.log("Detected as tablehistograms");
     return "tablehistograms";
+  }
+  if (filename.includes("os_top_cpu") || 
+      content.includes("top - ") && content.includes("PID USER") && 
+      content.includes("%CPU %MEM")) {
+    console.log("Detected as os_top_cpu");
+    return "os_top_cpu";
   }
   
   console.warn("Could not detect file type");
