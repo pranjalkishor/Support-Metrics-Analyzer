@@ -17,6 +17,7 @@ import { MPStatSelector } from "./components/MPStatSelector";
 import { IostatSelector } from "./components/IostatSelector";
 import { OsTopCpuVisualizer } from "./components/OsTopCpuVisualizer";
 import { SwissJavaKnifeVisualizer } from "./components/SwissJavaKnifeVisualizer";
+import { SystemLogVisualizer } from "./components/SystemLogVisualizer";
 
 const DATASTAX_COLORS = {
   primary: '#3A36DB', // DataStax blue
@@ -121,11 +122,29 @@ function App() {
     
     const file = files[0];
     const text = await file.text();
+    
+    // Add debug logging
+    console.log("File name:", file.name);
+    console.log("File size:", file.size);
+    console.log("First 200 characters:", text.substring(0, 200));
+    
     const type = detectFileType(file.name, text);
+    console.log("Detected file type:", type);
+    
+    // Store file content for all file types, not just specialized ones
+    setFileContent(text);
     
     let parsedData: ParsedTimeSeries | null = null;
     
     try {
+      // Add this case for system.log files
+      if (type === "systemlog") {
+        // For systemlog files, we just need to set the type and file content
+        // The SystemLogVisualizer component will handle the parsing
+        setType(type);
+        return; // Early return to avoid generic handling below
+      }
+      
       if (type === "tpstats") {
         parsedData = parseTpstats(text);
         if (parsedData) {
@@ -391,6 +410,17 @@ function App() {
             fileContent={fileContent}
             darkMode={darkMode}
           />
+        ) : type === "systemlog" ? (
+          // Special handling for system.log files
+          <div style={{
+            background: darkMode ? "#232333" : "white",
+            borderRadius: '8px',
+            boxShadow: darkMode ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.05)',
+            padding: '24px',
+            marginTop: '24px'
+          }}>
+            <SystemLogVisualizer logContent={fileContent} />
+          </div>
         ) : parsed && (
           <>
             {type === "tablehistograms" ? (
@@ -464,6 +494,13 @@ function App() {
 
 function detectFileType(filename: string, content: string) {
   console.log("Detecting file type for:", filename);
+  
+  // Move system.log detection to the top for priority
+  if (filename.toLowerCase().includes("system") || 
+      (content.includes("GCInspector") || content.includes("StatusLogger"))) {
+    console.log("Detected as system.log");
+    return "systemlog";
+  }
   
   if (filename.includes("tpstats")) {
     console.log("Detected as tpstats");

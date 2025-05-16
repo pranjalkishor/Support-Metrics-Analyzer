@@ -1,0 +1,251 @@
+.system-log-visualizer {
+  padding: 20px;
+}
+
+.system-log-visualizer h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #3A36DB;
+}
+
+.stats-summary {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.stat-box {
+  flex: 1;
+  min-width: 200px;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  background-color: #f8f9ff;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-box:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.stat-box h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #555;
+  font-size: 16px;
+}
+
+.stat-box p {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: bold;
+  color: #FF5C35;
+}
+
+.tab-navigation {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 5px;
+}
+
+.tab-navigation button {
+  padding: 10px 20px;
+  margin: 0 5px;
+  background: none;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: 15px;
+  color: #555;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.tab-navigation button:hover:not(:disabled) {
+  background-color: #f0f0f0;
+  color: #3A36DB;
+}
+
+.tab-navigation button.active {
+  background-color: #3A36DB;
+  color: white;
+  font-weight: bold;
+}
+
+.tab-navigation button:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.tab-content {
+  padding: 20px;
+  border-radius: 0 0 8px 8px;
+  min-height: 500px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  font-size: 18px;
+  color: #666;
+}
+
+.error-message {
+  padding: 20px;
+  margin: 20px 0;
+  background-color: #fff0f0;
+  border-left: 4px solid #ff3b30;
+  color: #d03025;
+  border-radius: 4px;
+}
+
+.no-data {
+  text-align: center;
+  padding: 50px;
+  color: #666;
+  font-size: 18px;
+}
+
+.no-data-message {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  color: #777;
+  font-size: 16px;
+  font-style: italic;
+  border: 1px dashed #ddd;
+  border-radius: 8px;
+}
+
+/* Dark mode support */
+.dark-mode .system-log-visualizer {
+  background-color: #1e1e2f;
+  color: #e0e0e0;
+}
+
+.dark-mode .stat-box {
+  background-color: #2a2a3c;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .tab-navigation {
+  border-color: #333;
+}
+
+.dark-mode .tab-navigation button {
+  color: #ccc;
+}
+
+.dark-mode .tab-navigation button:hover:not(:disabled) {
+  background-color: #2a2a3c;
+}
+
+.dark-mode .tab-navigation button.active {
+  background-color: #3A36DB;
+  color: white;
+}
+
+.dark-mode .error-message {
+  background-color: #3f2725;
+  color: #ff8080;
+}
+
+.dark-mode .no-data-message {
+  border-color: #333;
+  color: #999;
+}
+
+/* Data table styles */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.data-table th {
+  background-color: #f5f5f5;
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 2px solid #ddd;
+  cursor: pointer;
+}
+
+.data-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #eee;
+}
+
+.data-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+.data-table .query-text {
+  max-width: 400px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chart containers */
+.chart-container {
+  background-color: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2rem;
+}
+
+/* Dark mode adjustments */
+body.dark-mode .system-log-visualizer {
+  background-color: #1e1e1e;
+  color: #e0e0e0;
+}
+
+body.dark-mode .stat-box {
+  background-color: #2a2a2a;
+}
+
+body.dark-mode .stat-box h3 {
+  color: #bbb;
+}
+
+body.dark-mode .tab-navigation {
+  border-bottom-color: #444;
+}
+
+body.dark-mode .tab-navigation button {
+  color: #e0e0e0;
+}
+
+body.dark-mode .tab-navigation button.active {
+  color: #7b78ff;
+}
+
+body.dark-mode .tab-navigation button.active::after {
+  background-color: #7b78ff;
+}
+
+body.dark-mode .data-table th {
+  background-color: #2a2a2a;
+  border-bottom-color: #444;
+}
+
+body.dark-mode .data-table td {
+  border-bottom-color: #333;
+}
+
+body.dark-mode .data-table tr:hover {
+  background-color: #2a2a2a;
+}
+
+body.dark-mode .chart-container {
+  background-color: #2a2a2a;
+} 

@@ -10,7 +10,7 @@ export const FileUpload: React.FC<Props> = ({ onFiles }) => (
       type="file"
       multiple
       onChange={e => e.target.files && onFiles(e.target.files)}
-      accept=".out,.txt"
+      accept=".out,.txt,.log"
     />
   </div>
 );
