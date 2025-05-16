@@ -16,6 +16,7 @@ import { TPStatsSelector } from "./components/TPStatsSelector";
 import { MPStatSelector } from "./components/MPStatSelector";
 import { IostatSelector } from "./components/IostatSelector";
 import { OsTopCpuVisualizer } from "./components/OsTopCpuVisualizer";
+import { SwissJavaKnifeVisualizer } from "./components/SwissJavaKnifeVisualizer";
 
 const DATASTAX_COLORS = {
   primary: '#3A36DB', // DataStax blue
@@ -312,6 +313,13 @@ function App() {
         setFileContent(text);
         return; // Early return to avoid generic handling below
       }
+      else if (type === "swiss_java_knife") {
+        // For Swiss Java Knife, just set the type and file content
+        // and let the specialized component handle it
+        setType(type);
+        setFileContent(text);
+        return; // Early return to avoid generic handling below
+      }
       
       // Generic handling for any parsed data
       if (parsedData && Object.keys(parsedData.series).length > 0) {
@@ -376,6 +384,12 @@ function App() {
           <OsTopCpuVisualizer 
             fileContent={fileContent} 
             darkMode={darkMode} 
+          />
+        ) : type === "swiss_java_knife" ? (
+          // Special handling for Swiss Java Knife files
+          <SwissJavaKnifeVisualizer
+            fileContent={fileContent}
+            darkMode={darkMode}
           />
         ) : parsed && (
           <>
@@ -469,6 +483,16 @@ function detectFileType(filename: string, content: string) {
       content.includes("%CPU %MEM")) {
     console.log("Detected as os_top_cpu");
     return "os_top_cpu";
+  }
+  
+  // Detect Swiss Java Knife output
+  if (filename.includes("sjk") || 
+      (content.includes("process cpu=") && 
+       content.includes("heap allocation rate") && 
+       content.includes("[") && content.includes("user=") && 
+       content.includes("sys=") && content.includes("alloc="))) {
+    console.log("Detected as swiss_java_knife");
+    return "swiss_java_knife";
   }
   
   console.warn("Could not detect file type");

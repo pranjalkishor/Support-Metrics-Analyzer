@@ -7,6 +7,7 @@ interface ZoomableTimeSeriesChartsProps {
   selectedMetrics: string[];
   darkMode: boolean;
   isLogarithmic?: boolean;
+  onTimeRangeChange?: (startIndex: number, endIndex: number) => void;
 }
 
 // Color palette for charts
@@ -28,6 +29,7 @@ export const ZoomableTimeSeriesCharts: React.FC<ZoomableTimeSeriesChartsProps> =
   selectedMetrics,
   darkMode,
   isLogarithmic = false,
+  onTimeRangeChange,
 }) => {
   const [formattedData, setFormattedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +186,13 @@ export const ZoomableTimeSeriesCharts: React.FC<ZoomableTimeSeriesChartsProps> =
     name: getDisplayName(metric.dataKey)
   }));
 
+  // Handle time range selection from the chart
+  const handleBrushChange = (startIndex: number, endIndex: number) => {
+    if (onTimeRangeChange) {
+      onTimeRangeChange(startIndex, endIndex);
+    }
+  };
+
   // If no data or loading, show appropriate message
   if (loading) {
     return (
@@ -297,6 +306,7 @@ export const ZoomableTimeSeriesCharts: React.FC<ZoomableTimeSeriesChartsProps> =
         darkMode={darkMode}
         isLogarithmic={isLogarithmic}
         unitSuffix={isLatencyData ? (showInMilliseconds ? ' ms' : ' µs') : ''}
+        onBrushChange={handleBrushChange}
       />
     </div>
   );

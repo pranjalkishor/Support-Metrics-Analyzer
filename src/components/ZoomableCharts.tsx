@@ -474,6 +474,7 @@ interface SynchronizedChartsProps {
   darkMode?: boolean;
   isLogarithmic?: boolean;
   unitSuffix?: string; // Added for showing units like 'ms' or 'µs'
+  onBrushChange?: (startIndex: number, endIndex: number) => void;
 }
 
 export const SynchronizedCharts: React.FC<SynchronizedChartsProps> = ({ 
@@ -481,7 +482,8 @@ export const SynchronizedCharts: React.FC<SynchronizedChartsProps> = ({
   metrics,
   darkMode = false,
   isLogarithmic = false,
-  unitSuffix = ''
+  unitSuffix = '',
+  onBrushChange
 }) => {
   // Shared state for time range selection
   const [selectedTimeRange, setSelectedTimeRange] = useState<[number, number] | null>(null);
@@ -502,6 +504,11 @@ export const SynchronizedCharts: React.FC<SynchronizedChartsProps> = ({
     const validEndIndex = Math.max(validStartIndex, Math.min(endIndex, data.length - 1));
     
     setSelectedTimeRange([validStartIndex, validEndIndex]);
+    
+    // If onBrushChange callback is provided, forward the event
+    if (onBrushChange) {
+      onBrushChange(validStartIndex, validEndIndex);
+    }
   };
 
   // Get timestamps array from data for the TimeRangeSlider
