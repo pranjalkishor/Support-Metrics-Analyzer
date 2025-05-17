@@ -506,7 +506,11 @@ function detectFileType(filename: string, content: string) {
     console.log("Detected as tpstats");
     return "tpstats";
   }
-  if (filename.includes("iostat")) return "iostat";
+  if (filename.includes("iostat") || 
+      (filename.endsWith(".output") && content.includes("avg-cpu:"))) {
+    console.log("Detected as iostat");
+    return "iostat";
+  }
   if (filename.includes("mpstat")) {
     return "mpstat" as any; // Force type to avoid linter error
   }

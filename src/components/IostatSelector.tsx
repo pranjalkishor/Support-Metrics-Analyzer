@@ -25,7 +25,11 @@ export const IostatSelector: React.FC<Props> = ({
   const CPU_METRICS = ["%user", "%nice", "%system", "%iowait", "%steal", "%idle"];
   
   // Device metric types (from the parser)
-  const DEVICE_METRICS = ["r/s", "w/s", "rkB/s", "wkB/s", "r_await", "w_await", "%util"];
+  const DEVICE_METRICS = [
+    "r/s", "w/s", "rkB/s", "wkB/s", "r_await", "w_await", "%util",
+    // Additional Linux iostat metrics
+    "rrqm/s", "wrqm/s", "avgrq-sz", "avgqu-sz", "await", "svctm"
+  ];
   
   // Extract devices and metric types from available metrics
   useEffect(() => {
