@@ -28,6 +28,10 @@ export const StatusLoggerVisualizer: React.FC<StatusLoggerVisualizerProps> = ({ 
   });
   const [isAutoScale, setIsAutoScale] = useState<boolean>(true);
   const [yAxisScale, setYAxisScale] = useState<number | null>(null);
+  // New state for multi-metric visualization
+  const [visualizationMode, setVisualizationMode] = useState<'single-metric' | 'multi-metric'>('single-metric');
+  const [selectedPoolForMultiMetric, setSelectedPoolForMultiMetric] = useState<string>('');
+  const [selectedMetricsForPool, setSelectedMetricsForPool] = useState<string[]>(['Active', 'Pending', 'Completed']);
 
   // Extract available thread pools and metrics
   const { threadPools, metrics, poolCategories } = useMemo(() => {
@@ -97,20 +101,35 @@ export const StatusLoggerVisualizer: React.FC<StatusLoggerVisualizerProps> = ({ 
 
   // Calculate max y-axis value for the selected data
   const maxValue = useMemo(() => {
-    if (!threadPoolMetricsData?.series || selectedPools.length === 0) return 0;
+    if (!threadPoolMetricsData?.series) return 0;
     
-    let max = 0;
-    selectedPools.forEach(pool => {
-      const seriesKey = `${pool}: ${selectedMetric}`;
-      if (threadPoolMetricsData.series[seriesKey]) {
-        const poolMax = Math.max(...threadPoolMetricsData.series[seriesKey]);
-        max = Math.max(max, poolMax);
-      }
-    });
-    
-    // Add a 10% margin
-    return Math.ceil(max * 1.1);
-  }, [threadPoolMetricsData, selectedPools, selectedMetric]);
+    if (visualizationMode === 'single-metric') {
+      if (selectedPools.length === 0) return 0;
+      let max = 0;
+      selectedPools.forEach(pool => {
+        const seriesKey = `${pool}: ${selectedMetric}`;
+        if (threadPoolMetricsData.series[seriesKey]) {
+          const poolMax = Math.max(...threadPoolMetricsData.series[seriesKey]);
+          max = Math.max(max, poolMax);
+        }
+      });
+      // Add a 10% margin
+      return Math.ceil(max * 1.1);
+    } else {
+      // For multi-metric mode
+      if (!selectedPoolForMultiMetric) return 0;
+      let max = 0;
+      selectedMetricsForPool.forEach(metric => {
+        const seriesKey = `${selectedPoolForMultiMetric}: ${metric}`;
+        if (threadPoolMetricsData.series[seriesKey]) {
+          const metricMax = Math.max(...threadPoolMetricsData.series[seriesKey]);
+          max = Math.max(max, metricMax);
+        }
+      });
+      // Add a 10% margin
+      return Math.ceil(max * 1.1);
+    }
+  }, [threadPoolMetricsData, selectedPools, selectedMetric, visualizationMode, selectedPoolForMultiMetric, selectedMetricsForPool]);
 
   // Prepare data for the chart
   const chartData = useMemo(() => {
@@ -118,23 +137,44 @@ export const StatusLoggerVisualizer: React.FC<StatusLoggerVisualizerProps> = ({ 
       return [];
     }
 
-    return threadPoolMetricsData.timestamps.map((timestamp, index) => {
-      const dataPoint: Record<string, any> = {
-        timestamp,
-        formattedTime: new Date(timestamp).toLocaleString()
-      };
-      
-      // Add value for each selected pool
-      selectedPools.forEach(pool => {
-        const seriesKey = `${pool}: ${selectedMetric}`;
-        if (threadPoolMetricsData.series[seriesKey]) {
-          dataPoint[pool] = threadPoolMetricsData.series[seriesKey][index];
-        }
+    if (visualizationMode === 'single-metric') {
+      // Original single-metric mode
+      return threadPoolMetricsData.timestamps.map((timestamp, index) => {
+        const dataPoint: Record<string, any> = {
+          timestamp,
+          formattedTime: new Date(timestamp).toLocaleString()
+        };
+        
+        // Add value for each selected pool
+        selectedPools.forEach(pool => {
+          const seriesKey = `${pool}: ${selectedMetric}`;
+          if (threadPoolMetricsData.series[seriesKey]) {
+            dataPoint[pool] = threadPoolMetricsData.series[seriesKey][index];
+          }
+        });
+        
+        return dataPoint;
       });
-      
-      return dataPoint;
-    });
-  }, [threadPoolMetricsData, selectedPools, selectedMetric]);
+    } else {
+      // Multi-metric mode for a single pool
+      return threadPoolMetricsData.timestamps.map((timestamp, index) => {
+        const dataPoint: Record<string, any> = {
+          timestamp,
+          formattedTime: new Date(timestamp).toLocaleString()
+        };
+        
+        // Add value for each selected metric
+        selectedMetricsForPool.forEach(metric => {
+          const seriesKey = `${selectedPoolForMultiMetric}: ${metric}`;
+          if (threadPoolMetricsData.series[seriesKey]) {
+            dataPoint[metric] = threadPoolMetricsData.series[seriesKey][index];
+          }
+        });
+        
+        return dataPoint;
+      });
+    }
+  }, [threadPoolMetricsData, selectedPools, selectedMetric, visualizationMode, selectedPoolForMultiMetric, selectedMetricsForPool]);
 
   // Example log from the raw data
   const exampleLog = useMemo(() => {
@@ -196,6 +236,15 @@ ${selectedPools.map(pool => {
     setSelectedPools(topPools);
   };
 
+  // Toggle metrics for multi-metric view
+  const toggleMetricSelection = (metric: string) => {
+    setSelectedMetricsForPool(prev => 
+      prev.includes(metric)
+        ? prev.filter(m => m !== metric)
+        : [...prev, metric]
+    );
+  };
+
   // Handle scaling options
   const toggleAutoScale = () => {
     setIsAutoScale(!isAutoScale);
@@ -205,6 +254,14 @@ ${selectedPools.map(pool => {
       setYAxisScale(null);
     }
   };
+
+  // Set default pool for multi-metric view when switching modes
+  useEffect(() => {
+    if (visualizationMode === 'multi-metric' && !selectedPoolForMultiMetric && threadPools.length > 0) {
+      // Use the first selected pool or the first available pool
+      setSelectedPoolForMultiMetric(selectedPools[0] || threadPools[0]);
+    }
+  }, [visualizationMode, selectedPoolForMultiMetric, selectedPools, threadPools]);
 
   if (!threadPoolMetricsData || !threadPoolMetricsData.timestamps || threadPoolMetricsData.timestamps.length === 0) {
     return <div className="status-logger-visualizer empty-state">No Status Logger thread pool data available.</div>;
@@ -225,149 +282,324 @@ ${selectedPools.map(pool => {
         </div>
       </div>
       
-      {/* Controls */}
-      <div className="controls">
-        <div className="metric-selector">
-          <label>Metric: </label>
-          <select 
-            value={selectedMetric} 
-            onChange={(e) => setSelectedMetric(e.target.value)}
-          >
-            {metrics.map(metric => (
-              <option key={metric} value={metric}>{metric}</option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="scaling-options">
-          <label>
-            <input 
-              type="checkbox" 
-              checked={isAutoScale} 
-              onChange={toggleAutoScale}
-            /> 
-            Auto-scale Y-axis
-          </label>
-          {!isAutoScale && (
-            <input 
-              type="number" 
-              value={yAxisScale || 0} 
-              onChange={(e) => setYAxisScale(parseInt(e.target.value, 10))}
-              className="scale-input"
-            />
-          )}
-        </div>
-        
-        <div className="filter-controls">
-          <div className="pool-type-filters">
+      {/* Visualization Mode Selection */}
+      <div className="visualization-mode">
+        <div className="mode-selector">
+          <label>Visualization Mode: </label>
+          <div className="mode-options">
             <label>
               <input 
-                type="checkbox" 
-                checked={showPoolTypes.standard} 
-                onChange={() => togglePoolType('standard')}
+                type="radio" 
+                value="single-metric" 
+                checked={visualizationMode === 'single-metric'} 
+                onChange={() => setVisualizationMode('single-metric')}
               />
-              Standard Pools
+              Compare Pools (Same Metric)
             </label>
             <label>
               <input 
-                type="checkbox" 
-                checked={showPoolTypes.tpc} 
-                onChange={() => togglePoolType('tpc')}
+                type="radio" 
+                value="multi-metric" 
+                checked={visualizationMode === 'multi-metric'} 
+                onChange={() => setVisualizationMode('multi-metric')}
               />
-              TPC Pools
+              Compare Metrics (Same Pool)
             </label>
-          </div>
-          
-          <div className="search-box">
-            <input 
-              type="text" 
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Search thread pools..."
-            />
-          </div>
-          
-          <div className="selection-actions">
-            <button onClick={clearSelection} disabled={selectedPools.length === 0}>
-              Clear Selection
-            </button>
-            <button onClick={selectTopActivePools}>
-              Select Top Active Pools
-            </button>
-          </div>
-        </div>
-        
-        <div className="pool-selector">
-          <div className="pool-selector-header">Select Thread Pools</div>
-          <div className="pool-list">
-            {filteredPools.map(pool => (
-              <div key={pool} className="pool-item">
-                <label>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedPools.includes(pool)}
-                    onChange={() => togglePoolSelection(pool)}
-                  />
-                  {pool}
-                </label>
-              </div>
-            ))}
-            {filteredPools.length === 0 && (
-              <div className="no-pools-message">No thread pools matching your filters</div>
-            )}
           </div>
         </div>
       </div>
       
+      {/* Controls */}
+      <div className="controls">
+        {visualizationMode === 'single-metric' ? (
+          <>
+            <div className="metric-selector">
+              <label>Metric: </label>
+              <select 
+                value={selectedMetric} 
+                onChange={(e) => setSelectedMetric(e.target.value)}
+              >
+                {metrics.map(metric => (
+                  <option key={metric} value={metric}>{metric}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="scaling-options">
+              <label>
+                <input 
+                  type="checkbox" 
+                  checked={isAutoScale} 
+                  onChange={toggleAutoScale}
+                /> 
+                Auto-scale Y-axis
+              </label>
+              {!isAutoScale && (
+                <input 
+                  type="number" 
+                  value={yAxisScale || 0} 
+                  onChange={(e) => setYAxisScale(parseInt(e.target.value, 10))}
+                  className="scale-input"
+                />
+              )}
+            </div>
+            
+            <div className="filter-controls">
+              <div className="pool-type-filters">
+                <label>
+                  <input 
+                    type="checkbox" 
+                    checked={showPoolTypes.standard} 
+                    onChange={() => togglePoolType('standard')}
+                  />
+                  Standard Pools
+                </label>
+                <label>
+                  <input 
+                    type="checkbox" 
+                    checked={showPoolTypes.tpc} 
+                    onChange={() => togglePoolType('tpc')}
+                  />
+                  TPC Pools
+                </label>
+              </div>
+              
+              <div className="search-box">
+                <input 
+                  type="text" 
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Search thread pools..."
+                />
+              </div>
+              
+              <div className="selection-actions">
+                <button onClick={clearSelection} disabled={selectedPools.length === 0}>
+                  Clear Selection
+                </button>
+                <button onClick={selectTopActivePools}>
+                  Select Top Active Pools
+                </button>
+              </div>
+            </div>
+            
+            <div className="pool-selector">
+              <div className="pool-selector-header">Select Thread Pools</div>
+              <div className="pool-list">
+                {filteredPools.map(pool => (
+                  <div key={pool} className="pool-item">
+                    <label>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedPools.includes(pool)}
+                        onChange={() => togglePoolSelection(pool)}
+                      />
+                      {pool}
+                    </label>
+                  </div>
+                ))}
+                {filteredPools.length === 0 && (
+                  <div className="no-pools-message">No thread pools matching your filters</div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Multi-metric mode controls */
+          <>
+            <div className="pool-selector-single">
+              <label>Select Thread Pool: </label>
+              <select 
+                value={selectedPoolForMultiMetric} 
+                onChange={(e) => setSelectedPoolForMultiMetric(e.target.value)}
+              >
+                <option value="">Select a thread pool</option>
+                {filteredPools.map(pool => (
+                  <option key={pool} value={pool}>{pool}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="metrics-selector">
+              <div className="metrics-selector-header">Select Metrics to Display</div>
+              <div className="metrics-list">
+                {metrics.map(metric => (
+                  <div key={metric} className="metric-item">
+                    <label>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedMetricsForPool.includes(metric)}
+                        onChange={() => toggleMetricSelection(metric)}
+                      />
+                      {metric}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="scaling-options">
+              <label>
+                <input 
+                  type="checkbox" 
+                  checked={isAutoScale} 
+                  onChange={toggleAutoScale}
+                /> 
+                Auto-scale Y-axis
+              </label>
+              {!isAutoScale && (
+                <input 
+                  type="number" 
+                  value={yAxisScale || 0} 
+                  onChange={(e) => setYAxisScale(parseInt(e.target.value, 10))}
+                  className="scale-input"
+                />
+              )}
+            </div>
+            
+            <div className="filter-controls">
+              <div className="pool-type-filters">
+                <label>
+                  <input 
+                    type="checkbox" 
+                    checked={showPoolTypes.standard} 
+                    onChange={() => togglePoolType('standard')}
+                  />
+                  Standard Pools
+                </label>
+                <label>
+                  <input 
+                    type="checkbox" 
+                    checked={showPoolTypes.tpc} 
+                    onChange={() => togglePoolType('tpc')}
+                  />
+                  TPC Pools
+                </label>
+              </div>
+              
+              <div className="search-box">
+                <input 
+                  type="text" 
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Search thread pools..."
+                />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+      
       {/* Chart */}
       <div className="chart-container">
-        <h3>{selectedMetric} Thread Pool Metrics Over Time</h3>
-        {selectedPools.length === 0 ? (
-          <div className="no-selection-message">
-            Select one or more thread pools to visualize data
-          </div>
+        {visualizationMode === 'single-metric' ? (
+          /* Single metric mode chart */
+          <>
+            <h3>{selectedMetric} Thread Pool Metrics Over Time</h3>
+            {selectedPools.length === 0 ? (
+              <div className="no-selection-message">
+                Select one or more thread pools to visualize data
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={500}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="formattedTime" 
+                    tick={{ fontSize: 10 }} 
+                    angle={-45} 
+                    textAnchor="end"
+                    height={80}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    label={{ value: selectedMetric, angle: -90, position: 'insideLeft' }}
+                    domain={isAutoScale ? ['auto', 'auto'] : [0, yAxisScale || 'auto']}
+                  />
+                  <Tooltip 
+                    formatter={(value, name) => [value, name]}
+                    labelFormatter={(label) => `Time: ${label}`}
+                  />
+                  <Legend />
+                  {/* Zero reference line */}
+                  <ReferenceLine y={0} stroke="#666" />
+                  
+                  {selectedPools.map((pool, index) => (
+                    <Line 
+                      key={pool}
+                      type="monotone" 
+                      dataKey={pool} 
+                      name={pool}
+                      stroke={getColor(index)} 
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 6 }}
+                      connectNulls={true}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </>
         ) : (
-          <ResponsiveContainer width="100%" height={500}>
-            <LineChart
-              data={chartData}
-              margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="formattedTime" 
-                tick={{ fontSize: 10 }} 
-                angle={-45} 
-                textAnchor="end"
-                height={80}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                label={{ value: selectedMetric, angle: -90, position: 'insideLeft' }}
-                domain={isAutoScale ? ['auto', 'auto'] : [0, yAxisScale || 'auto']}
-              />
-              <Tooltip 
-                formatter={(value, name) => [value, name]}
-                labelFormatter={(label) => `Time: ${label}`}
-              />
-              <Legend />
-              {/* Zero reference line */}
-              <ReferenceLine y={0} stroke="#666" />
-              
-              {selectedPools.map((pool, index) => (
-                <Line 
-                  key={pool}
-                  type="monotone" 
-                  dataKey={pool} 
-                  name={pool}
-                  stroke={getColor(index)} 
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 6 }}
-                  connectNulls={true}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          /* Multi-metric mode chart */
+          <>
+            <h3>Multiple Metrics for {selectedPoolForMultiMetric || "Selected Thread Pool"}</h3>
+            {!selectedPoolForMultiMetric ? (
+              <div className="no-selection-message">
+                Select a thread pool to visualize metrics
+              </div>
+            ) : selectedMetricsForPool.length === 0 ? (
+              <div className="no-selection-message">
+                Select one or more metrics to visualize
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={500}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="formattedTime" 
+                    tick={{ fontSize: 10 }} 
+                    angle={-45} 
+                    textAnchor="end"
+                    height={80}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    label={{ value: "Metric Value", angle: -90, position: 'insideLeft' }}
+                    domain={isAutoScale ? ['auto', 'auto'] : [0, yAxisScale || 'auto']}
+                  />
+                  <Tooltip 
+                    formatter={(value, name) => [value, name]}
+                    labelFormatter={(label) => `Time: ${label}`}
+                  />
+                  <Legend />
+                  {/* Zero reference line */}
+                  <ReferenceLine y={0} stroke="#666" />
+                  
+                  {selectedMetricsForPool.map((metric, index) => (
+                    <Line 
+                      key={metric}
+                      type="monotone" 
+                      dataKey={metric} 
+                      name={metric}
+                      stroke={getColor(index)} 
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 6 }}
+                      connectNulls={true}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </>
         )}
       </div>
       

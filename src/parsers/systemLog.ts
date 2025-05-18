@@ -214,9 +214,18 @@ export function parseThreadPoolMetrics(logContent: string): ParsedTimeSeries {
       }
       
       // If we're in the thread pool section and have a timestamp, parse the thread pool data lines
-      if (inThreadPoolSection && currentTimestamp && !line.includes("Table") && !line.includes("Memtable")) {
-        // Skip if empty or seems like a header
-        if (!line.trim() || line.includes("Memtable") || line.includes("---")) {
+      if (inThreadPoolSection && currentTimestamp) {
+        // Skip if empty or seems like a header or other type of log message
+        if (!line.trim() || 
+            line.includes("Memtable") || 
+            line.includes("---") || 
+            line.includes("Table") ||
+            line.startsWith("INFO") ||
+            line.startsWith("WARN") ||
+            line.startsWith("ERROR") ||
+            line.startsWith("DEBUG") ||
+            !line.match(/\s+\d+\s+/) // Line must contain numbers surrounded by spaces to be a thread pool line
+           ) {
           continue;
         }
         
@@ -224,6 +233,12 @@ export function parseThreadPoolMetrics(logContent: string): ParsedTimeSeries {
         try {
           const poolData = parseThreadPoolLine(line, headerColumns);
           if (poolData && poolData.poolName) {
+            // Additional validation: Check if the pool name looks like a log message
+            if (poolData.poolName.includes("[") && poolData.poolName.includes("]")) {
+              console.warn(`Skipping likely non-thread pool line: ${line.substring(0, 30)}...`);
+              continue;
+            }
+            
             // Add this thread pool to our list if not already there
             if (!threadPools.includes(poolData.poolName)) {
               threadPools.push(poolData.poolName);
@@ -248,11 +263,6 @@ export function parseThreadPoolMetrics(logContent: string): ParsedTimeSeries {
               
               // Get the value, defaulting to 0 if not found
               const metricValue = poolData[internalField] || 0;
-              
-              // Special log for Pending metrics to help debug
-              if (metric === 'Pending') {
-                console.log(`Setting ${metricKey} = ${metricValue} (from field: ${internalField})`);
-              }
               
               // Initialize series if needed
               if (!series[metricKey]) {
