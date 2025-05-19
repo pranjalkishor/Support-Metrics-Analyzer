@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { ParsedTimeSeries } from '../types';
 import './StatusLoggerVisualizer.css';
+import { TimeRangeSlider } from './TimeRangeSlider';
 
 interface StatusLoggerVisualizerProps {
   threadPoolMetricsData: ParsedTimeSeries;
@@ -26,6 +27,7 @@ export const StatusLoggerVisualizer: React.FC<StatusLoggerVisualizerProps> = ({ 
   });
   const [isAutoScale, setIsAutoScale] = useState<boolean>(true);
   const [yAxisScale, setYAxisScale] = useState<number | null>(null);
+  const [timeRange, setTimeRange] = useState<[number, number] | null>(null);
   
   // Selected pools with metrics - this directly controls what's plotted
   const [selectedPoolsWithMetrics, setSelectedPoolsWithMetrics] = useState<{
@@ -109,11 +111,17 @@ export const StatusLoggerVisualizer: React.FC<StatusLoggerVisualizerProps> = ({ 
     
     const result: Record<string, any[]> = {};
     
+    // Determine the actual range to use
+    const startIndex = timeRange ? Math.max(0, timeRange[0]) : 0;
+    const endIndex = timeRange ? Math.min(threadPoolMetricsData.timestamps.length - 1, timeRange[1]) : threadPoolMetricsData.timestamps.length - 1;
+    
     // Prepare data for each pool
     selectedPoolsWithMetrics.forEach(selection => {
       if (selection.metrics.length === 0) return;
       
-      const poolData = threadPoolMetricsData.timestamps.map((timestamp, index) => {
+      // Only include data points within the selected time range
+      const poolData = threadPoolMetricsData.timestamps.slice(startIndex, endIndex + 1).map((timestamp, rangeIndex) => {
+        const index = startIndex + rangeIndex;
         const dataPoint: Record<string, any> = {
           timestamp,
           formattedTime: new Date(timestamp).toLocaleString()
@@ -134,7 +142,7 @@ export const StatusLoggerVisualizer: React.FC<StatusLoggerVisualizerProps> = ({ 
     });
     
     return result;
-  }, [threadPoolMetricsData, selectedPoolsWithMetrics]);
+  }, [threadPoolMetricsData, selectedPoolsWithMetrics, timeRange]);
 
   // Calculate max y-axis value for each pool
   const poolMaxValues = useMemo(() => {
@@ -275,6 +283,11 @@ ${selectedPoolNames.map(pool => {
   const isMetricSelected = (pool: string, metric: string): boolean => {
     const poolSelection = selectedPoolsWithMetrics.find(item => item.pool === pool);
     return poolSelection ? poolSelection.metrics.includes(metric) : false;
+  };
+
+  // Handle time range changes from the slider
+  const handleTimeRangeChange = (startIndex: number, endIndex: number) => {
+    setTimeRange([startIndex, endIndex]);
   };
 
   if (!threadPoolMetricsData || !threadPoolMetricsData.timestamps || threadPoolMetricsData.timestamps.length === 0) {
@@ -461,6 +474,17 @@ ${selectedPoolNames.map(pool => {
               )}
             </div>
           ))}
+          
+          {/* Time Range Slider */}
+          {selectedPoolsWithMetrics.length > 0 && threadPoolMetricsData.timestamps.length > 0 && (
+            <div className="time-range-slider-container">
+              <TimeRangeSlider
+                timestamps={threadPoolMetricsData.timestamps}
+                onChange={handleTimeRangeChange}
+                selectedTimeRange={timeRange}
+              />
+            </div>
+          )}
         </div>
       )}
       

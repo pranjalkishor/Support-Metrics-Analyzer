@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // Move constant to top of file
 const DATASTAX_COLORS = {
@@ -51,7 +51,11 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
   const [startIndex, setStartIndex] = useState<number>(0);
   const [endIndex, setEndIndex] = useState<number>(timestamps.length - 1);
   const [displayFullDate, setDisplayFullDate] = useState(false);
-  const [draggingHandle, setDraggingHandle] = useState<'start' | 'end' | null>(null);
+  
+  // Use refs for tracking dragging state
+  const isDraggingRef = useRef<boolean>(false);
+  const activeHandleRef = useRef<'start' | 'end' | null>(null);
+  const sliderTrackRef = useRef<HTMLDivElement>(null);
 
   // Debug logging
   useEffect(() => {
@@ -198,82 +202,58 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
     }
   };
 
-  // Direct drag functions for the handle divs with debouncing
-  let dragTimeout: NodeJS.Timeout | null = null;
-  
-  const handleMouseUp = () => {
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    document.removeEventListener('touchmove', handleTouchMove);
-    document.removeEventListener('touchend', handleMouseUp);
-    setDraggingHandle(null);
-  };
-  
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!draggingHandle) return;
-    
-    const trackElement = document.querySelector('.slider-track') as HTMLElement;
-    if (!trackElement) return;
-    
-    const rect = trackElement.getBoundingClientRect();
-    if (!rect) return;
-    
-    // Get the clientX position, clamped to the track bounds
-    const clientX = Math.max(rect.left, Math.min(e.clientX, rect.right));
-    
-    // Calculate percentage and index
-    const percentage = (clientX - rect.left) / rect.width;
-    const index = Math.round(percentage * (timestamps.length - 1));
-    
-    // Apply the change based on which handle is being dragged
-    if (dragTimeout) clearTimeout(dragTimeout);
-    dragTimeout = setTimeout(() => {
-      if (draggingHandle === 'start') {
-        // Don't let the start handle go past the end handle
-        const newStart = Math.min(index, validEndIndex - 1);
-        if (newStart !== validStartIndex && newStart >= 0) {
-          setStartIndex(newStart);
-          onChange(newStart, validEndIndex);
-        }
-      } else if (draggingHandle === 'end') {
-        // Don't let the end handle go before the start handle
-        const newEnd = Math.max(index, validStartIndex + 1);
-        if (newEnd !== validEndIndex && newEnd < timestamps.length) {
-          setEndIndex(newEnd);
-          onChange(validStartIndex, newEnd);
-        }
-      }
-    }, 10); // Small debounce for performance
-  };
-  
-  const handleTouchMove = (e: TouchEvent) => {
-    if (e.touches.length === 0) return;
-    const touch = e.touches[0];
-    
-    // Create a custom event with the touch coordinates
-    const mouseEvent = new MouseEvent('mousemove', {
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      bubbles: true,
-      cancelable: true,
-      view: window,
-    });
-    
-    handleMouseMove(mouseEvent);
-    e.preventDefault(); // Prevent page scrolling while dragging
-  };
-  
-  const startDrag = (e: React.MouseEvent | React.TouchEvent, isStart: boolean) => {
-    // Set which handle is being dragged
-    setDraggingHandle(isStart ? 'start' : 'end');
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleMouseUp);
-    
-    // Prevent default to avoid text selection
+  // Simplified drag handling with refs
+  const handleDragStart = (e: React.MouseEvent, handle: 'start' | 'end') => {
     e.preventDefault();
+    activeHandleRef.current = handle;
+    isDraggingRef.current = true;
+    
+    // Set up event listeners for move and up events
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+    
+    console.log(`Starting drag for ${handle} handle`);
+  };
+  
+  const handleDragMove = (e: MouseEvent) => {
+    if (!isDraggingRef.current || !activeHandleRef.current || !sliderTrackRef.current) return;
+    
+    // Get track dimensions
+    const trackRect = sliderTrackRef.current.getBoundingClientRect();
+    const trackWidth = trackRect.width;
+    const trackLeft = trackRect.left;
+    
+    // Calculate position relative to track
+    let position = Math.max(0, Math.min(e.clientX - trackLeft, trackWidth));
+    let indexPosition = Math.round((position / trackWidth) * (timestamps.length - 1));
+    
+    // Update the appropriate handle
+    if (activeHandleRef.current === 'start') {
+      // Ensure start handle doesn't go past end handle
+      indexPosition = Math.min(indexPosition, endIndex - 1);
+      if (indexPosition !== startIndex && indexPosition >= 0) {
+        setStartIndex(indexPosition);
+        onChange(indexPosition, endIndex);
+      }
+    } else {
+      // Ensure end handle doesn't go before start handle
+      indexPosition = Math.max(indexPosition, startIndex + 1);
+      if (indexPosition !== endIndex && indexPosition < timestamps.length) {
+        setEndIndex(indexPosition);
+        onChange(startIndex, indexPosition);
+      }
+    }
+  };
+  
+  const handleDragEnd = () => {
+    isDraggingRef.current = false;
+    activeHandleRef.current = null;
+    
+    // Remove event listeners
+    window.removeEventListener('mousemove', handleDragMove);
+    window.removeEventListener('mouseup', handleDragEnd);
+    
+    console.log("Drag ended");
   };
 
   const applyPreset = (preset: PresetRange) => {
@@ -311,11 +291,43 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
     rangeDuration = '';
   }
 
+  // Handle click on the track to set the closest handle
+  const handleTrackClick = (e: React.MouseEvent) => {
+    if (isDraggingRef.current) return; // Don't handle clicks during drag
+    
+    const trackRect = sliderTrackRef.current?.getBoundingClientRect();
+    if (!trackRect) return;
+    
+    // Calculate position relative to track
+    const position = Math.max(0, Math.min(e.clientX - trackRect.left, trackRect.width));
+    const clickedIndex = Math.round((position / trackRect.width) * (timestamps.length - 1));
+    
+    // Determine which handle is closer to the click position
+    const startDistance = Math.abs(clickedIndex - startIndex);
+    const endDistance = Math.abs(clickedIndex - endIndex);
+    
+    if (startDistance <= endDistance) {
+      // Move start handle if it's closer
+      if (clickedIndex < endIndex) {
+        setStartIndex(clickedIndex);
+        onChange(clickedIndex, endIndex);
+      }
+    } else {
+      // Move end handle if it's closer
+      if (clickedIndex > startIndex) {
+        setEndIndex(clickedIndex);
+        onChange(startIndex, clickedIndex);
+      }
+    }
+  };
+
   return (
     <div style={{
       padding: '10px 0',
       borderTop: `1px solid ${darkMode ? '#444' : '#eee'}`,
       marginBottom: '20px',
+      position: 'relative',
+      zIndex: 10,
     }}>
       <div style={{ 
         display: 'flex', 
@@ -398,13 +410,13 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
         position: 'relative', 
         height: '50px', 
         marginBottom: '20px',
-        touchAction: 'none', // Prevent default touch actions
+        touchAction: 'none',
       }}>
-        {/* Improved slider interaction */}
-        
-        {/* Track background */}
+        {/* Track background with click handling */}
         <div 
+          ref={sliderTrackRef}
           className="slider-track"
+          onClick={handleTrackClick}
           style={{
             position: 'absolute',
             top: '18px',
@@ -414,6 +426,7 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
             backgroundColor: darkMode ? '#444' : '#e0e0e0',
             borderRadius: '5px',
             zIndex: 1,
+            cursor: 'pointer',
           }} 
         />
         
@@ -422,8 +435,8 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
           style={{
             position: 'absolute',
             top: '18px',
-            left: `${(validStartIndex / (timestamps.length - 1)) * 100}%`,
-            right: `${100 - (validEndIndex / (timestamps.length - 1)) * 100}%`,
+            left: `${(startIndex / (timestamps.length - 1)) * 100}%`,
+            right: `${100 - (endIndex / (timestamps.length - 1)) * 100}%`,
             height: '10px',
             backgroundColor: DATASTAX_COLORS.primary,
             borderRadius: '5px',
@@ -431,23 +444,23 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
           }} 
         />
         
-        {/* Visual indicators for slider handles with direct drag handling */}
+        {/* Start handle */}
         <div 
           className="start-handle"
-          onMouseDown={(e) => startDrag(e, true)}
-          onTouchStart={(e) => startDrag(e, true)}
+          onMouseDown={(e) => handleDragStart(e, 'start')}
           style={{
             position: 'absolute',
             top: '8px',
-            left: `calc(${(validStartIndex / (timestamps.length - 1)) * 100}% - 15px)`,
+            left: `calc(${(startIndex / (timestamps.length - 1)) * 100}% - 15px)`,
             width: '30px',
             height: '30px',
-            zIndex: 7,
-            cursor: 'grab',
+            zIndex: 20,
+            cursor: isDraggingRef.current && activeHandleRef.current === 'start' ? 'grabbing' : 'grab',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             touchAction: 'none',
+            userSelect: 'none',
           }}
         >
           <div 
@@ -458,26 +471,28 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
               backgroundColor: DATASTAX_COLORS.primary,
               border: `3px solid ${darkMode ? '#232333' : 'white'}`,
               boxShadow: '0 0 5px rgba(0, 0, 0, 0.5)',
+              pointerEvents: 'none',
             }}
           />
         </div>
         
+        {/* End handle */}
         <div 
           className="end-handle"
-          onMouseDown={(e) => startDrag(e, false)}
-          onTouchStart={(e) => startDrag(e, false)}
+          onMouseDown={(e) => handleDragStart(e, 'end')}
           style={{
             position: 'absolute',
             top: '8px',
-            left: `calc(${(validEndIndex / (timestamps.length - 1)) * 100}% - 15px)`,
+            left: `calc(${(endIndex / (timestamps.length - 1)) * 100}% - 15px)`,
             width: '30px',
             height: '30px',
-            zIndex: 8,
-            cursor: 'grab',
+            zIndex: 21,
+            cursor: isDraggingRef.current && activeHandleRef.current === 'end' ? 'grabbing' : 'grab',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             touchAction: 'none',
+            userSelect: 'none',
           }}
         >
           <div 
@@ -488,6 +503,7 @@ export const TimeRangeSlider: React.FC<TimeRangeSliderProps> = ({
               backgroundColor: DATASTAX_COLORS.primary,
               border: `3px solid ${darkMode ? '#232333' : 'white'}`,
               boxShadow: '0 0 5px rgba(0, 0, 0, 0.5)',
+              pointerEvents: 'none',
             }}
           />
         </div>

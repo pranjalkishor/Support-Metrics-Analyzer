@@ -288,6 +288,38 @@
   font-size: 14px;
 }
 
+/* Time Range Slider styles */
+.time-range-slider-container {
+  padding: 10px;
+  background-color: #f8f9ff;
+  border-radius: 6px;
+  border: 1px solid #e0e6ed;
+  margin-top: 15px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  position: relative;
+  z-index: 5;
+}
+
+/* Enhanced slider handle styles */
+.start-handle, .end-handle {
+  pointer-events: auto !important;
+  touch-action: none !important;
+  user-select: none !important;
+}
+
+.start-handle:active, .end-handle:active {
+  cursor: grabbing !important;
+}
+
+.start-handle:hover div, .end-handle:hover div {
+  transform: scale(1.1);
+  transition: transform 0.1s ease;
+}
+
+.slider-track {
+  cursor: pointer;
+}
+
 /* Dark mode support */
 .dark-mode .status-logger-visualizer {
   background-color: #1e1e2f;
@@ -371,4 +403,9 @@
 .dark-mode .no-selection-message {
   border-color: #444;
   color: #aaa;
+}
+
+.dark-mode .time-range-slider-container {
+  background-color: #2a2b36;
+  border-color: #3d3d50;
 } 
