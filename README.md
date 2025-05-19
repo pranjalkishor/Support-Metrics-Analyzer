@@ -1,46 +1,125 @@
-# Getting Started with Create React App
+# Support Metrics Analyzer
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A powerful web-based visualization tool for analyzing Apache Cassandra & DataStax Enterprise metrics and logs. This tool helps in troubleshooting and performance analysis by providing interactive visualizations of various metrics collected from Cassandra/DSE nodes.
 
-## Available Scripts
+![Support Metrics Analyzer Screenshot](docs/screenshot.png)
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+- **Multiple File Format Support**:
+  - **System Logs**: Parse thread pool metrics, GC events, tombstone warnings, and slow reads
+  - **iostat**: Analyze disk I/O statistics including throughput, utilization, and service times
+  - **tpstats**: Visualize thread pool statistics across multiple metrics
+  - **mpstat**: Monitor CPU utilization and performance
+  - **Proxy & Table Histograms**: Analyze operation latencies at different percentiles
+  - **Top CPU Processes**: Track CPU usage patterns of system processes
+  - **Swiss Java Knife (SJK) Output**: Analyze JVM performance metrics
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- **Advanced Visualization**:
+  - Interactive time-series charts with zoom capabilities
+  - Compare multiple metrics simultaneously
+  - Multiple visualization modes for thread pool data
+  - Dark mode support
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+- **User-Friendly Interface**:
+  - Simple drag-and-drop file upload
+  - Automatic file type detection
+  - Intuitive metric selection
+  - Responsive design that works on various screen sizes
 
-### `npm test`
+## Getting Started
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Prerequisites
 
-### `npm run build`
+- Node.js (v14.0.0 or higher)
+- npm (v6.0.0 or higher)
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Installation
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. Clone this repository:
+   ```
+   git clone https://github.com/datastax/Support-Metrics-Analyzer.git
+   cd Support-Metrics-Analyzer
+   ```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+2. Install dependencies:
+   ```
+   npm install
+   ```
 
-### `npm run eject`
+3. Start the development server:
+   ```
+   npm run dev
+   ```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+4. Open your browser and navigate to http://localhost:3000
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### Building for Production
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+To create a production build:
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+```
+npm run build
+```
 
-## Learn More
+The build artifacts will be stored in the `build/` directory, ready for deployment.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Usage Guide
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Uploading Files
+
+1. **Upload Log Files**: Click the upload area or drag and drop your log files
+2. File types are automatically detected based on their contents and naming
+3. For optimal results, use unmodified logs directly from Cassandra/DSE nodes
+
+### Visualizing Metrics
+
+#### Thread Pool Metrics (system.log)
+
+- Select thread pools from the grid view
+- Check metrics you want to visualize (Active, Pending, Completed, etc.)
+- Each thread pool will display in its own chart
+- Use the "Show Top Active Pools" button to quickly find busy thread pools
+
+#### iostat Metrics
+
+- Select devices and metrics to visualize
+- Compare metrics across different devices or focus on a specific device
+
+#### Thread Pool Stats (tpstats)
+
+- Switch between ThreadPool, MessageType, and Meters sections
+- Select specific thread pools and task types to analyze
+
+### Tips for Analysis
+
+- **GC Impact Analysis**: Look for correlations between GC events and operation latencies
+- **Thread Pool Blocking**: Monitor thread pool metrics to identify potential blocking issues
+- **I/O Bottlenecks**: Use iostat visualization to identify disk performance issues
+- **CPU Saturation**: Use mpstat data to identify CPU bottlenecks
+
+## Supported File Formats
+
+| File Type | Description | Example Filename |
+|-----------|-------------|------------------|
+| System Log | Cassandra/DSE system.log files | `system.log` |
+| iostat | Linux iostat output | `iostat.out`, `iostat.txt`, `*.output` |
+| tpstats | Cassandra thread pool stats | `tpstats.out` |
+| mpstat | CPU utilization statistics | `mpstat.out` |
+| Proxy Histograms | Cassandra proxy histogram data | `proxyhistograms.log` |
+| Table Histograms | Cassandra table histogram data | `tablehistograms.log` |
+| Top CPU | Linux top command CPU output | `os_top_cpu.out` |
+| SJK | Swiss Java Knife output | `sjk.out` |
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- The DataStax Support team for identifying the need for this tool
+- Contributors who have helped enhance this tool's capabilities
