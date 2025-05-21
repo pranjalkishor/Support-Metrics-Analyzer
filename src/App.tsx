@@ -3,7 +3,7 @@ import './App.css';
 import { parseIostat } from "./parsers/iostat";
 import { parseMpstat } from "./parsers/mpstat";
 import { parseProxyHistograms } from "./parsers/proxyhistograms";
-import { ParsedTimeSeries } from "./types";
+import { ParsedTimeSeries, ClusterData } from "./types";
 import { parseTpstats } from "./parsers/tpstats";
 import { FileUpload } from "./components/FileUpload";
 import { ChartSelector } from "./components/ChartSelector";
@@ -18,6 +18,8 @@ import { IostatSelector } from "./components/IostatSelector";
 import { OsTopCpuVisualizer } from "./components/OsTopCpuVisualizer";
 import { SwissJavaKnifeVisualizer } from "./components/SwissJavaKnifeVisualizer";
 import { SystemLogVisualizer } from "./components/SystemLogVisualizer";
+import { MultiNodeSystemLogVisualizer } from "./components/MultiNodeSystemLogVisualizer";
+import { parseSystemLog } from "./parsers/systemLog";
 
 const DATASTAX_COLORS = {
   primary: '#3A36DB', // DataStax blue
@@ -104,6 +106,7 @@ function App() {
     return localStorage.getItem('darkMode') === 'true';
   });
   const [fileContent, setFileContent] = useState<string>("");
+  const [clusterData, setClusterData] = useState<ClusterData | null>(null);
 
   useEffect(() => {
     if (darkMode) {
@@ -119,6 +122,7 @@ function App() {
     setMetrics([]);
     setSelected([]);
     setType(null);
+    setClusterData(null);
     
     const file = files[0];
     const text = await file.text();
@@ -363,6 +367,236 @@ function App() {
     }
   };
 
+  const handleFolderUpload = async (files: File[]) => {
+    // Reset states
+    setParsed(null);
+    setMetrics([]);
+    setSelected([]);
+    setType(null);
+    setFileContent("");
+    
+    console.log("Processing folder upload with", files.length, "files");
+    
+    // Debug: Log all files to see what's actually uploaded
+    console.log("All uploaded files:");
+    files.forEach(file => {
+      console.log(`- ${file.webkitRelativePath || file.name} (${file.size} bytes)`);
+    });
+    
+    // Initialize cluster data structure
+    const newClusterData: ClusterData = { 
+      nodes: {}
+    };
+    
+    // Group files by node based on path structure
+    for (const file of files) {
+      // Extract node info from path: nodes/IP_of_node/logs/system.log
+      // Also support deeper nesting like: nodes/IP_of_node/logs/cassandra/system.log
+      const pathParts = file.webkitRelativePath.split('/');
+      
+      // Log the path parts for debugging
+      console.log(`File ${file.name} path parts:`, pathParts);
+      
+      // Skip files that don't match our expected path structure
+      if (pathParts.length < 3) {
+        console.log(`Skipping file with unexpected path structure: ${file.webkitRelativePath}`);
+        continue;
+      }
+      
+      // Extract node identifier (assumed to be the 2nd part of the path)
+      const nodeId = pathParts[1];
+      
+      // Process system.log files
+      if (file.name.toLowerCase() === 'system.log') {
+        try {
+          // Read file content
+          const text = await file.text();
+          console.log(`System.log for node ${nodeId} content length: ${text.length} bytes`);
+          console.log(`First 200 chars: ${text.substring(0, 200)}`);
+          
+          // Parse the system log
+          const parsedLog = parseSystemLog(text);
+          
+          // Log parsing results
+          console.log(`Parsing results for node ${nodeId}:`, {
+            gcEvents: parsedLog.gcEvents ? {
+              timestamps: parsedLog.gcEvents.timestamps.length,
+              metrics: Object.keys(parsedLog.gcEvents.series)
+            } : null,
+            threadPoolMetrics: parsedLog.threadPoolMetrics ? {
+              timestamps: parsedLog.threadPoolMetrics.timestamps.length,
+              metrics: Object.keys(parsedLog.threadPoolMetrics.series),
+              threadPools: parsedLog.threadPoolMetrics.metadata?.threadPools?.length || 0,
+              seriesSample: Object.keys(parsedLog.threadPoolMetrics.series).slice(0, 5),
+              threadPoolNames: parsedLog.threadPoolMetrics.metadata?.threadPools || []
+            } : null,
+            tombstoneWarnings: parsedLog.tombstoneWarnings ? {
+              timestamps: parsedLog.tombstoneWarnings.timestamps.length,
+              metrics: Object.keys(parsedLog.tombstoneWarnings.series)
+            } : null,
+            slowReads: parsedLog.slowReads ? {
+              timestamps: parsedLog.slowReads.timestamps.length,
+              metrics: Object.keys(parsedLog.slowReads.series)
+            } : null
+          });
+          
+          // Add additional debug logging for thread pool metrics
+          if (parsedLog.threadPoolMetrics) {
+            console.log("Thread pool metrics found for node " + nodeId + ":", {
+              pools: parsedLog.threadPoolMetrics.metadata?.threadPools,
+              seriesKeys: Object.keys(parsedLog.threadPoolMetrics.series).slice(0, 10)
+            });
+            parsedLog.threadPoolMetrics = preprocessTimestamps(parsedLog.threadPoolMetrics);
+            
+            // Verify thread pool data after preprocessing
+            console.log("Thread pool metrics after preprocessing:", {
+              pools: parsedLog.threadPoolMetrics.metadata?.threadPools,
+              seriesKeys: Object.keys(parsedLog.threadPoolMetrics.series).slice(0, 10)
+            });
+          }
+        
+          // Calculate a priority score based on available data
+          // This will help us order nodes with more/better data first
+          const gcCount = parsedLog.gcEvents?.timestamps?.length || 0;
+          const threadPoolCount = parsedLog.threadPoolMetrics?.timestamps?.length || 0;
+          const threadPoolMetricCount = parsedLog.threadPoolMetrics?.series ? Object.keys(parsedLog.threadPoolMetrics.series).length : 0;
+          const tombstoneCount = parsedLog.tombstoneWarnings?.timestamps?.length || 0;
+          const slowReadsCount = parsedLog.slowReads?.timestamps?.length || 0;
+          
+          // Score is weighted to prioritize nodes with thread pool and GC data
+          const priorityScore = 
+            gcCount * 2 + 
+            threadPoolCount * 3 + 
+            threadPoolMetricCount +
+            tombstoneCount + 
+            slowReadsCount;
+          
+          // Create a data quality indicator for this node
+          const dataQuality = {
+            hasGC: gcCount > 0,
+            hasThreadPools: threadPoolCount > 0,
+            hasTombstones: tombstoneCount > 0,
+            hasSlowReads: slowReadsCount > 0,
+            gcCount,
+            threadPoolCount,
+            threadPoolMetricCount,
+            tombstoneCount,
+            slowReadsCount,
+            totalTimestamps: gcCount + threadPoolCount + tombstoneCount + slowReadsCount,
+            score: priorityScore
+          };
+          
+          console.log(`Data quality for node ${nodeId}:`, dataQuality);
+          
+          // Initialize node in cluster data if it doesn't exist
+          if (!newClusterData.nodes[nodeId]) {
+            newClusterData.nodes[nodeId] = {
+              info: {
+                id: nodeId,
+                ip: nodeId,  // Use nodeId as IP if it looks like an IP address
+                path: file.webkitRelativePath
+              },
+              systemLog: {}
+            };
+          }
+          
+          // Add the parsed log data to the node
+          newClusterData.nodes[nodeId].systemLog = {
+            gcEvents: parsedLog.gcEvents,
+            threadPoolMetrics: parsedLog.threadPoolMetrics,
+            tombstoneWarnings: parsedLog.tombstoneWarnings,
+            slowReads: parsedLog.slowReads,
+            priority: priorityScore,  // Store the priority score for sorting later
+            dataQuality: dataQuality  // Store detailed data quality metrics
+          };
+          
+          console.log(`Processed system.log for node ${nodeId} with priority score ${priorityScore}`);
+        } catch (err) {
+          console.error(`Error processing system.log for node ${nodeId}:`, err);
+        }
+      }
+      
+      // Additional file types could be processed here
+    }
+    
+    // After processing all files, reorder nodes by priority score
+    if (Object.keys(newClusterData.nodes).length > 0) {
+      const nodeEntries = Object.entries(newClusterData.nodes);
+      
+      // Sort nodes by priority score (higher scores first)
+      nodeEntries.sort((a, b) => {
+        const scoreA = a[1].systemLog?.priority || 0;
+        const scoreB = b[1].systemLog?.priority || 0;
+        return scoreB - scoreA;
+      });
+      
+      // Create a new ordered object
+      const orderedNodes: {[nodeId: string]: any} = {};
+      nodeEntries.forEach(([nodeId, nodeData]) => {
+        // Create a copy of the node data without the priority score
+        const nodeCopy = {...nodeData};
+        if (nodeCopy.systemLog && 'priority' in nodeCopy.systemLog) {
+          delete nodeCopy.systemLog.priority;
+        }
+        orderedNodes[nodeId] = nodeCopy;
+      });
+      
+      // Replace the nodes object with our prioritized version
+      newClusterData.nodes = orderedNodes;
+    }
+    
+    // Check if we found any valid nodes
+    const nodeCount = Object.keys(newClusterData.nodes).length;
+    if (nodeCount > 0) {
+      console.log(`Successfully processed ${nodeCount} nodes`);
+      console.log("Final cluster data:", JSON.stringify(newClusterData, null, 2));
+      setClusterData(newClusterData);
+      setType("cluster");
+      
+      // Debug: For issue diagnosis
+      // Find a node with the most thread pool data and log its details
+      if (Object.keys(newClusterData.nodes).length > 0) {
+        // Filter nodes that have thread pool metrics data
+        const nodesWithThreadPoolMetrics = Object.values(newClusterData.nodes)
+          .filter(node => {
+            return !!(node.systemLog?.threadPoolMetrics?.timestamps?.length);
+          });
+        
+        // Sort by timestamp count (descending)
+        nodesWithThreadPoolMetrics.sort((a, b) => {
+          const aCount = a.systemLog?.threadPoolMetrics?.timestamps?.length || 0;
+          const bCount = b.systemLog?.threadPoolMetrics?.timestamps?.length || 0;
+          return bCount - aCount;
+        });
+        
+        if (nodesWithThreadPoolMetrics.length > 0) {
+          const nodeWithMostData = nodesWithThreadPoolMetrics[0];
+          const threadPoolMetrics = nodeWithMostData.systemLog?.threadPoolMetrics;
+          
+          if (threadPoolMetrics) {
+            console.log("Debug - Thread Pool Metrics from node with most data:", {
+              nodeId: nodeWithMostData.info.id,
+              timestampCount: threadPoolMetrics.timestamps?.length || 0,
+              threadPools: threadPoolMetrics.metadata?.threadPools?.length || 0,
+              seriesEntries: Object.keys(threadPoolMetrics.series || {}).length,
+              sampleKeys: Object.keys(threadPoolMetrics.series || {}).slice(0, 10),
+              threadPoolList: threadPoolMetrics.metadata?.threadPools || [],
+              seriesValues: Object.keys(threadPoolMetrics.series || {})
+                .slice(0, 5)
+                .map(key => ({ 
+                  key, 
+                  values: threadPoolMetrics.series?.[key]?.slice(0, 5) || []
+                }))
+            });
+          }
+        }
+      }
+    } else {
+      console.error("No valid node data found in uploaded folder");
+      alert("No valid node data found in the uploaded folder. Please ensure it follows the structure: nodes/IP_of_node/logs/system.log");
+    }
+  };
+
   const toggleDarkMode = () => {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
@@ -393,12 +627,26 @@ function App() {
             fontSize: '18px',
             color: darkMode ? "#e1e1e1" : "inherit" 
           }}>
-            Upload Metric File
+            Upload Metrics
           </h2>
-          <FileUpload onFiles={handleFiles} />
+          <FileUpload onFiles={handleFiles} onFolderUpload={handleFolderUpload} />
         </div>
         
-        {type === "os_top_cpu" ? (
+        {type === "cluster" && clusterData ? (
+          // Multi-node system log visualization
+          <div style={{
+            background: darkMode ? "#232333" : "white",
+            borderRadius: '8px',
+            boxShadow: darkMode ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.05)',
+            padding: '24px',
+            marginTop: '24px'
+          }}>
+            <MultiNodeSystemLogVisualizer 
+              clusterData={clusterData} 
+              darkMode={darkMode}
+            />
+          </div>
+        ) : type === "os_top_cpu" ? (
           // Special handling for os_top_cpu files
           <OsTopCpuVisualizer 
             fileContent={fileContent} 

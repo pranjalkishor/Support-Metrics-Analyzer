@@ -1,5 +1,5 @@
 .system-log-visualizer {
-  padding: 20px;
+  padding: 15px;
 }
 
 .system-log-visualizer h1 {
@@ -248,4 +248,140 @@ body.dark-mode .data-table tr:hover {
 
 body.dark-mode .chart-container {
   background-color: #2a2a2a;
+}
+
+/* Multi-node visualizer specific styles */
+.cluster-summary {
+  margin-bottom: 20px;
+}
+
+.node-selection-panel {
+  background-color: #f8f9ff;
+  border-radius: 8px;
+  border: 1px solid #e0e6ed;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.node-selection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.node-selection-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #3A36DB;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 15px;
+}
+
+.view-mode-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.node-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.node-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.node-item:hover {
+  border-color: #3A36DB;
+  background-color: #f5f8ff;
+}
+
+.node-item.selected {
+  background-color: #f0f4ff;
+  border-color: #3A36DB;
+}
+
+.node-name {
+  flex: 1;
+  margin-left: 8px;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-left: 10px;
+}
+
+.multi-node-visualizers {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.node-visualizer {
+  border: 1px solid #e0e6ed;
+  border-radius: 8px;
+  padding: 15px;
+  background-color: #fff;
+}
+
+.node-visualizer h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e0e6ed;
+  font-size: 16px;
+}
+
+/* Dark mode support for multi-node view */
+.dark-mode .node-selection-panel {
+  background-color: #2a2a3c;
+  border-color: #444;
+}
+
+.dark-mode .node-selection-header h3 {
+  color: #4A46EB;
+}
+
+.dark-mode .node-item {
+  border-color: #444;
+  background-color: #2a2a3c;
+}
+
+.dark-mode .node-item:hover {
+  background-color: #32324c;
+  border-color: #555;
+}
+
+.dark-mode .node-item.selected {
+  background-color: #2d2d48;
+  border-color: #3A36DB;
+}
+
+.dark-mode .node-visualizer {
+  background-color: #2a2a3c;
+  border-color: #444;
+}
+
+.dark-mode .node-visualizer h3 {
+  border-color: #444;
 } 

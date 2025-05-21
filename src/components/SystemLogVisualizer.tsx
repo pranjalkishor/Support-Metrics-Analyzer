@@ -85,9 +85,20 @@ export const SystemLogVisualizer: React.FC<SystemLogVisualizerProps> = ({ logCon
                    parsedData.gcEvents.timestamps && 
                    parsedData.gcEvents.timestamps.length > 0;
   
-  const hasThreadPoolData = parsedData.threadPoolMetrics && 
-                           parsedData.threadPoolMetrics.timestamps && 
-                           parsedData.threadPoolMetrics.timestamps.length > 0;
+  // Enhanced thread pool data detection that checks multiple indicators
+  const hasThreadPoolData = parsedData.threadPoolMetrics && (
+    // Check timestamps
+    (parsedData.threadPoolMetrics.timestamps && 
+     parsedData.threadPoolMetrics.timestamps.length > 0) ||
+    // Check series data 
+    (parsedData.threadPoolMetrics.series && 
+     Object.keys(parsedData.threadPoolMetrics.series).length > 0) ||
+    // Check metadata for thread pools
+    (parsedData.threadPoolMetrics.metadata && 
+     parsedData.threadPoolMetrics.metadata.threadPools && 
+     Array.isArray(parsedData.threadPoolMetrics.metadata.threadPools) && 
+     parsedData.threadPoolMetrics.metadata.threadPools.length > 0)
+  );
 
   const hasTombstoneData = parsedData.tombstoneWarnings && 
                           parsedData.tombstoneWarnings.timestamps && 
