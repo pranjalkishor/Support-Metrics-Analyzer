@@ -1,0 +1,106 @@
+.file-upload-container {
+  padding: 0;
+}
+
+.upload-options {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.upload-option {
+  flex: 1;
+  min-width: 250px;
+  background-color: #f8f9ff;
+  border-radius: 8px;
+  padding: 15px;
+  border: 1px solid #e0e6ed;
+  transition: all 0.2s ease;
+}
+
+.upload-option:hover {
+  border-color: #3A36DB;
+  box-shadow: 0 2px 8px rgba(58, 54, 219, 0.1);
+}
+
+.upload-option h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 16px;
+  color: #3A36DB;
+}
+
+.upload-option p {
+  margin: 5px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.upload-hint {
+  font-size: 12px !important;
+  color: #888 !important;
+  font-style: italic;
+}
+
+.upload-button {
+  background-color: #3A36DB;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  margin-top: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.upload-button:hover {
+  background-color: #2A26AB;
+}
+
+.folder-button {
+  background-color: #FF5C35;
+}
+
+.folder-button:hover {
+  background-color: #E54C25;
+}
+
+.compatibility-notice {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 4px;
+  color: #856404;
+  font-size: 14px;
+}
+
+/* Dark mode support */
+body.dark-mode .upload-option {
+  background-color: #2a2b36;
+  border-color: #3d3d50;
+}
+
+body.dark-mode .upload-option:hover {
+  border-color: #4A46EB;
+  box-shadow: 0 2px 8px rgba(74, 70, 235, 0.2);
+}
+
+body.dark-mode .upload-option h3 {
+  color: #4A46EB;
+}
+
+body.dark-mode .upload-option p {
+  color: #ccc;
+}
+
+body.dark-mode .upload-hint {
+  color: #aaa !important;
+}
+
+body.dark-mode .compatibility-notice {
+  background-color: #3a2e18;
+  border-color: #57471f;
+  color: #ffc107;
+} 
