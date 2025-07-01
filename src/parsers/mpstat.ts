@@ -4,120 +4,114 @@ import { ParsedTimeSeries } from "../types";
 (window as any).mpstatParserCalled = true;
 
 export function parseMpstat(content: string): ParsedTimeSeries {
-  // Parse mpstat data to extract CPU metrics
   const lines = content.split("\n");
   const timestamps: string[] = [];
   const series: { [metric: string]: number[] } = {};
-  
-  // Get today's date to construct full timestamp (if file only has time)
   const today = new Date();
   const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
-  // Process all lines
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0;
+  while (i < lines.length) {
     const line = lines[i].trim();
-    
-    // Look for timestamp lines that include CPU metrics header
-    if (line.match(/^\d{2}:\d{2}:\d{2}\s+CPU/) && line.includes("%usr")) {
-      // Extract timestamp
-      const timeStr = line.split(/\s+/)[0]; // Format: HH:MM:SS
-      
-      // Create a full ISO timestamp
-      let timestamp;
-      
-      // Check if the timestamp includes date information
-      if (timeStr.includes('-') && timeStr.length > 10) {
-        // Already has date information (yyyy-mm-dd format)
-        timestamp = new Date(timeStr).toISOString();
-      } else {
-        // Just time - add today's date
-        timestamp = new Date(`${dateStr}T${timeStr}`).toISOString();
-      }
-      
-      // Skip if we've already processed this timestamp
-      if (timestamps.includes(timestamp)) {
-        continue;
-      }
-      
-      // Add timestamp
-      timestamps.push(timestamp);
-      
-      // Get header columns to identify metric indices
+
+    // Find a header line for CPU utilization, which precedes a block of metrics
+    if (line.includes("CPU") && line.includes("%usr")) {
       const headerParts = line.split(/\s+/);
       
-      // Look for the 'all' CPU summary line which appears soon after the header
-      for (let j = i + 1; j < lines.length && j < i + 10; j++) {
+      // The actual data starts on the next non-empty lines.
+      // We need to find the first data line to get the correct timestamp for the block.
+      let blockStartIndex = i + 1;
+      while (blockStartIndex < lines.length && lines[blockStartIndex].trim() === "") {
+        blockStartIndex++;
+      }
+
+      // If we're at the end of the file, stop.
+      if (blockStartIndex >= lines.length) {
+          i++;
+          continue;
+      }
+      
+      const firstDataLine = lines[blockStartIndex].trim();
+      const timeStr = firstDataLine.split(/\s+/)[0];
+
+      // If this line doesn't start with a time, it's not a data block we want.
+      if (!/^\d{2}:\d{2}:\d{2}/.test(timeStr)) {
+          i++;
+          continue; 
+      }
+      
+      const timestamp = new Date(`${dateStr}T${timeStr}`).toISOString();
+      
+      // Add timestamp only if it's new
+      if (!timestamps.includes(timestamp)) {
+        timestamps.push(timestamp);
+      }
+
+      // Process all subsequent lines that belong to this timestamp
+      let j = blockStartIndex;
+      for (; j < lines.length; j++) {
         const dataLine = lines[j].trim();
+        if (!dataLine) continue;
+
+        const dataParts = dataLine.split(/\s+/);
         
-        // Find the line with 'all' CPU metrics
-        if (dataLine.split(/\s+/)[1] === "all") {
-          const dataParts = dataLine.split(/\s+/);
-          
-          // Create metrics for each column (CPU %usr, CPU %sys, etc.)
-          for (let k = 2; k < dataParts.length && k < headerParts.length; k++) {
-            const metricName = `CPU all ${headerParts[k]}`;
-            const value = parseFloat(dataParts[k]);
-            
-            if (!isNaN(value)) {
-              // Initialize series if needed
+        // If the timestamp changes, this block is done.
+        if (dataParts[0] !== timeStr) {
+          break; 
+        }
+
+        // It's a CPU utilization line if it has enough columns and a valid CPU id
+        if (dataParts.length >= headerParts.length) {
+          const cpuId = dataParts[1]; // 'all', '0', '1', etc.
+
+          if (cpuId === 'all' || /^\d+$/.test(cpuId)) {
+            let usrValue: number | null = null;
+            let sysValue: number | null = null;
+
+            for (let k = 2; k < headerParts.length; k++) {
+              const metricLabel = headerParts[k] || `col_${k}`;
+              const metricName = `CPU ${cpuId} ${metricLabel}`;
+              const value = parseFloat(dataParts[k]);
+              
+              if(metricLabel === '%usr') usrValue = value;
+              if(metricLabel === '%sys') sysValue = value;
+
               if (!series[metricName]) {
                 series[metricName] = Array(timestamps.length - 1).fill(NaN);
               }
-              
-              // Add the value
-              series[metricName].push(value);
+              series[metricName].push(isNaN(value) ? NaN : value);
             }
-          }
-          
-          // Process per-CPU lines too
-          for (let cpuLine = j + 1; cpuLine < j + 10 && cpuLine < lines.length; cpuLine++) {
-            const cpuDataLine = lines[cpuLine].trim();
-            if (!cpuDataLine || cpuDataLine.includes("CPU")) break;
             
-            const cpuParts = cpuDataLine.split(/\s+/);
-            if (cpuParts.length >= dataParts.length) {
-              const cpuId = cpuParts[1]; // 0, 1, 2, 3, etc.
-              
-              for (let k = 2; k < cpuParts.length && k < headerParts.length; k++) {
-                const cpuMetricName = `CPU ${cpuId} ${headerParts[k]}`;
-                const cpuValue = parseFloat(cpuParts[k]);
-                
-                if (!isNaN(cpuValue)) {
-                  if (!series[cpuMetricName]) {
-                    series[cpuMetricName] = Array(timestamps.length - 1).fill(NaN);
-                  }
-                  series[cpuMetricName].push(cpuValue);
+            if (usrValue !== null && sysValue !== null) {
+                const combinedMetricName = `CPU ${cpuId} %usr+sys`;
+                if (!series[combinedMetricName]) {
+                    series[combinedMetricName] = Array(timestamps.length - 1).fill(NaN);
                 }
-              }
+                series[combinedMetricName].push(usrValue + sysValue);
             }
           }
-          
-          break;
         }
       }
+      // Move outer loop index past the block we just processed
+      i = j;
+    } else {
+        i++;
     }
   }
-  
-  // Ensure all series have values for all timestamps
+
+  // Final padding pass to ensure all series have the same length
   Object.keys(series).forEach(key => {
     while (series[key].length < timestamps.length) {
       series[key].push(NaN);
     }
   });
-  
-  console.log("Processed mpstat data:", {
-    timestampCount: timestamps.length,
-    metricCount: Object.keys(series).length,
-    firstTimestamp: timestamps.length > 0 ? timestamps[0] : null,
-    lastTimestamp: timestamps.length > 0 ? timestamps[timestamps.length - 1] : null
-  });
-  
+
   // If we didn't find any data, create a minimal fallback
   if (Object.keys(series).length === 0 || timestamps.length === 0) {
     const now = new Date();
     const fallbackTimestamps = [];
-    for (let i = 0; i < 5; i++) {
-      const time = new Date(now.getTime() - (4 - i) * 60000);
+    for (let k = 0; k < 5; k++) {
+      const time = new Date(now.getTime() - (4 - k) * 60000);
       fallbackTimestamps.push(time.toISOString());
     }
     

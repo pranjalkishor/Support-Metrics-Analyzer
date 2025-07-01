@@ -18,6 +18,8 @@ import { IostatSelector } from "./components/IostatSelector";
 import { OsTopCpuVisualizer } from "./components/OsTopCpuVisualizer";
 import { SwissJavaKnifeVisualizer } from "./components/SwissJavaKnifeVisualizer";
 import { SystemLogVisualizer } from "./components/SystemLogVisualizer";
+import { parseCoreThread } from "./parsers/coreThreadParser";
+import { CoreThreadSelector } from "./components/CoreThreadSelector";
 
 const DATASTAX_COLORS = {
   primary: '#3A36DB', // DataStax blue
@@ -100,6 +102,7 @@ function App() {
   const [metrics, setMetrics] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [type, setType] = useState<string | null>(null);
+  const [parserType, setParserType] = useState<string>('auto');
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true';
   });
@@ -128,8 +131,8 @@ function App() {
     console.log("File size:", file.size);
     console.log("First 200 characters:", text.substring(0, 200));
     
-    const type = detectFileType(file.name, text);
-    console.log("Detected file type:", type);
+    const detectedType = parserType === 'auto' ? detectFileType(file.name, text) : parserType;
+    console.log("Detected file type:", detectedType);
     
     // Store file content for all file types, not just specialized ones
     setFileContent(text);
@@ -138,14 +141,23 @@ function App() {
     
     try {
       // Add this case for system.log files
-      if (type === "systemlog") {
+      if (detectedType === "systemlog") {
         // For systemlog files, we just need to set the type and file content
         // The SystemLogVisualizer component will handle the parsing
-        setType(type);
+        setType(detectedType);
         return; // Early return to avoid generic handling below
       }
       
-      if (type === "tpstats") {
+      if (detectedType === "corethread") {
+        parsedData = parseCoreThread(text);
+        if (parsedData) {
+          setParsed(parsedData);
+          setMetrics(Object.keys(parsedData.series));
+          setType(detectedType);
+        }
+      }
+      
+      if (detectedType === "tpstats") {
         parsedData = parseTpstats(text);
         if (parsedData) {
           console.log("TPSTATS PARSED DATA:");
@@ -155,10 +167,10 @@ function App() {
           
           setParsed(parsedData);
           setMetrics(Object.keys(parsedData.series));
-          setType(type);
+          setType(detectedType);
         }
       }
-      else if (type === "iostat") {
+      else if (detectedType === "iostat") {
         parsedData = parseIostat(text);
         if (parsedData) {
           console.log("IOSTAT PARSED DATA:");
@@ -168,7 +180,7 @@ function App() {
           
           setParsed(parsedData);
           setMetrics(Object.keys(parsedData.series));
-          setType(type);
+          setType(detectedType);
           
           // Set default metric for iostat (CPU %util or first available)
           if (Object.keys(parsedData.series).includes("%util")) {
@@ -177,7 +189,7 @@ function App() {
           }
         }
       }
-      else if (type === "mpstat") {
+      else if (detectedType === "mpstat") {
         parsedData = parseMpstat(text);
         if (parsedData) {
           console.log("MPSTAT PARSED DATA:");
@@ -187,7 +199,7 @@ function App() {
           
           setParsed(parsedData);
           setMetrics(Object.keys(parsedData.series));
-          setType(type);
+          setType(detectedType);
           
           // For mpstat, select a reasonable default metric
           if (Object.keys(parsedData.series).includes("CPU all %usr")) {
@@ -196,7 +208,7 @@ function App() {
           }
         }
       }
-      else if (type === "proxyhistograms") {
+      else if (detectedType === "proxyhistograms") {
         parsedData = parseProxyHistograms(text);
         if (parsedData) {
           setParsed(parsedData);
@@ -226,7 +238,7 @@ function App() {
           }
         }
       }
-      else if (type === "tablehistograms") {
+      else if (detectedType === "tablehistograms") {
         const result = parseTableHistograms(text);
         if (result) {
           console.log("TABLE HISTOGRAMS PARSED DATA:", {
@@ -289,7 +301,7 @@ function App() {
           
           setParsed(processedData);
           setMetrics(Object.keys(processedData.series));
-          setType(type);
+          setType(detectedType);
           
           // Select initial metrics (if available)
           const allMetrics = Object.keys(processedData.series);
@@ -325,17 +337,17 @@ function App() {
           }
         }
       }
-      else if (type === "os_top_cpu") {
+      else if (detectedType === "os_top_cpu") {
         // For os_top_cpu, we'll handle it differently
         // Just set the type and let the specialized component handle it
-        setType(type);
+        setType(detectedType);
         setFileContent(text);
         return; // Early return to avoid generic handling below
       }
-      else if (type === "swiss_java_knife") {
+      else if (detectedType === "swiss_java_knife") {
         // For Swiss Java Knife, just set the type and file content
         // and let the specialized component handle it
-        setType(type);
+        setType(detectedType);
         setFileContent(text);
         return; // Early return to avoid generic handling below
       }
@@ -395,7 +407,35 @@ function App() {
           }}>
             Upload Metric File
           </h2>
-          <FileUpload onFiles={handleFiles} />
+          <div className="container">
+            <div className="selectors">
+              <FileUpload onFiles={handleFiles} />
+              <div style={{ marginTop: '10px' }}>
+                <label htmlFor="parser-select">Parser: </label>
+                <select 
+                  id="parser-select"
+                  value={parserType} 
+                  onChange={e => setParserType(e.target.value)}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
+                    backgroundColor: darkMode ? '#1e1e30' : '#fff',
+                    color: darkMode ? '#e1e1e1' : '#333',
+                  }}
+                >
+                  <option value="auto">Auto-detect</option>
+                  <option value="mpstat">mpstat</option>
+                  <option value="iostat">iostat</option>
+                  <option value="tpstats">tpstats</option>
+                  <option value="proxyhistograms">proxyhistograms</option>
+                  <option value="tablehistograms">tablehistograms</option>
+                  <option value="systemlog">system.log</option>
+                  <option value="corethread">CoreThread</option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
         
         {type === "os_top_cpu" ? (
@@ -446,6 +486,13 @@ function App() {
               />
             ) : type === "iostat" ? (
               <IostatSelector
+                availableMetrics={metrics}
+                selectedMetrics={selected}
+                onChange={setSelected}
+                darkMode={darkMode}
+              />
+            ) : type === "corethread" ? (
+              <CoreThreadSelector
                 availableMetrics={metrics}
                 selectedMetrics={selected}
                 onChange={setSelected}
@@ -534,6 +581,10 @@ function detectFileType(filename: string, content: string) {
        content.includes("sys=") && content.includes("alloc="))) {
     console.log("Detected as swiss_java_knife");
     return "swiss_java_knife";
+  }
+  
+  if (content.includes('CoreThread-')) {
+    return 'corethread';
   }
   
   console.warn("Could not detect file type");

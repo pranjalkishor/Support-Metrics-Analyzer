@@ -64,9 +64,9 @@ export function parseProxyHistograms(content: string): ParsedTimeSeries {
             series[metricName] = Array(timestamps.length - 1).fill(NaN);
           }
           
-          // Convert from micros to millis
-          series[metricName].push(value / 1000.0);
-          console.log(`Added ${value/1000.0}ms to ${metricName}`);
+          // The value is already in microseconds, so no conversion is needed.
+          series[metricName].push(value);
+          console.log(`Added ${value}µs to ${metricName}`);
         }
       }
       
